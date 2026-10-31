@@ -174,7 +174,10 @@ customer utterances — the way a real user would phrase the need in an
 online review.
 
 ### Rules:
-- One sentence per CR, first person, everyday language.
+- One sentence per CR, in the customer's own words — the way a real reviewer
+  would say it. Vary the sentence opening; do NOT start with "I want" or
+  "I need my laptop". Statements, complaints, and wishes are all fine.
+- Make the situation concrete (when, where, what goes wrong), about 15–25 words.
 - Do NOT use spec jargon, units, standards, or benchmark names
   (e.g., nits, TFLOPS, MIL-STD, Cinebench, Z-height, sustained load).
   Describe the symptom or situation a customer actually experiences instead.

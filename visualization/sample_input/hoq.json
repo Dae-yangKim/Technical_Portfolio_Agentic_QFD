@@ -271,42 +271,42 @@
       {
         "cr": "I need my laptop’s battery to comfortably last a full real‑world day of typical light work, school, and casual use so I don’t have to stay near a charger.",
         "priority": 5.0,
-        "voc": "I need my laptop’s battery to easily last me a full day of normal work, school, and casual use so I’m not hunting for an outlet all the time."
+        "voc": "The battery has to get me through a full day of work or class away from an outlet."
       },
       {
         "cr": "I want my laptop to have a modern, power-efficient CPU and integrated graphics that keep everyday work, web, video, and light gaming fast and smooth without overheating or slowing down, even on battery.",
         "priority": 4.0,
-        "voc": "I want my laptop to have a modern, efficient processor and graphics so everyday work, web browsing, video, and light gaming stay fast and smooth without getting hot or slowing down, even on battery."
+        "voc": "Everyday work, video, and light games should stay fast and smooth — even on battery, without running hot."
       },
       {
         "cr": "I want my laptop to be light and compact enough that I can carry it around throughout the day without it feeling heavy or bulky.",
         "priority": 4.0,
-        "voc": "I want my laptop to be light and compact enough that I can carry it around all day without it feeling heavy or bulky."
+        "voc": "I carry it around all day — it can't feel heavy or bulky."
       },
       {
         "cr": "I want my laptop’s keyboard to be comfortable, accurate, and durable for long typing sessions, with a sensible layout, stable keys, well‑placed navigation, and effective backlighting where present.",
         "priority": 4.0,
-        "voc": "I want my laptop’s keyboard to feel comfortable and accurate for long typing sessions, with a sensible layout, solid keys, easy-to-reach navigation keys, and good backlighting if it has it."
+        "voc": "A comfortable, accurate keyboard I can type on for hours — sensible layout, solid keys, good backlight."
       },
       {
         "cr": "I need my laptop to have a well-chosen, robust mix of common ports (e.g., USB-A, USB-C/Thunderbolt, HDMI/DP, audio, and sometimes Ethernet/SD) so I can connect typical peripherals and displays without relying on many dongles.",
         "priority": 4.0,
-        "voc": "I need my laptop to have a solid mix of common ports so I can plug in my usual accessories and monitors without carrying a bunch of dongles."
+        "voc": "Give me the common ports I actually use — I'm not carrying a bag of dongles."
       },
       {
         "cr": "I want my laptop’s display to be bright, low-glare, and comfortable to view in typical and bright environments without distracting reflections or eye strain.",
         "priority": 4.0,
-        "voc": "I want my laptop’s screen to be bright, not too shiny, and easy on the eyes in both normal rooms and brighter places, without annoying reflections."
+        "voc": "The screen should be bright and easy on the eyes, without annoying reflections."
       },
       {
         "cr": "I want my laptop to have a 13–16 inch screen with a practical aspect ratio that balances comfortable workspace with portability.",
         "priority": 4.0,
-        "voc": "I want my laptop to have a medium-sized screen that gives me enough workspace but still keeps the laptop easy to carry around."
+        "voc": "A mid-size screen with enough room to work that still keeps it easy to carry."
       },
       {
         "cr": "I want my laptop’s RAM and storage to be user-upgradeable and not fully soldered so I can add capacity later as my needs grow.",
         "priority": 4.0,
-        "voc": "I want to be able to upgrade my laptop’s memory and storage myself later instead of everything being permanently fixed."
+        "voc": "Let me add memory and storage myself later instead of having it all soldered in."
       }
     ],
     "relationship_matrix": {
@@ -801,32 +801,32 @@
       {
         "cr": "I need my work laptop to be physically durable and robust (chassis, materials, components) so it survives many years of daily professional use and travel.",
         "priority": 5.0,
-        "voc": "I need my work laptop to be tough and well-built so it can handle years of daily use and travel without falling apart."
+        "voc": "It has to survive years of daily work and travel without falling apart."
       },
       {
         "cr": "I want my professional laptop to have enough RAM (and support for ≥32 GB where needed) so I can run IDEs, many tabs, VMs, data tools, and creative apps smoothly.",
         "priority": 5.0,
-        "voc": "I want my work laptop to have enough memory, and the option to go up to a lot more if needed, so I can run coding tools, tons of tabs, virtual machines, data programs, and creative apps smoothly."
+        "voc": "Coding tools, VMs, and a ton of tabs at once — I need plenty of memory, with room to go higher."
       },
       {
         "cr": "I need my professional laptop to offer capable graphics (integrated or discrete) appropriate to my work, from smooth multi‑monitor and video calls to demanding 3D, CAD, or AI workloads.",
         "priority": 5.0,
-        "voc": "I need my work laptop to have graphics that are strong enough for what I do, from running several monitors and video calls smoothly to handling heavy 3D, design, or AI work."
+        "voc": "Graphics strong enough for my work — from multi-monitor calls to heavy 3D, CAD, or AI."
       },
       {
         "cr": "I need my professional laptop’s cooling system to keep internal components cool and prevent thermal throttling or damage during sustained heavy workloads.",
         "priority": 5.0,
-        "voc": "I need my work laptop’s cooling to keep everything inside cool and prevent it from slowing down or getting damaged when I’m running heavy tasks for a long time."
+        "voc": "Under long, heavy workloads it has to stay cool — no throttling, no cooked parts."
       },
       {
         "cr": "I want my professional laptop to be reasonably serviceable and modular (RAM, SSD, battery, fans, hinges, cooling) so it can be repaired and upgraded instead of replaced.",
         "priority": 5.0,
-        "voc": "I want my work laptop to be reasonably easy to repair and upgrade, with parts like memory, storage, battery, and cooling that can be replaced instead of having to buy a whole new machine."
+        "voc": "When a part dies, let me replace it — memory, storage, battery, fans — not the whole laptop."
       },
       {
         "cr": "I need my professional laptop to include ample, fast internal storage and options for expansion (multiple slots, large SSDs) so I can keep big projects, VMs, and datasets locally.",
         "priority": 4.0,
-        "voc": "I need my work laptop to come with plenty of fast storage and room to add more so I can keep big projects, virtual machines, and data files on the laptop itself."
+        "voc": "I keep big projects and VMs on the laptop — give me lots of fast storage and room to add more."
       }
     ],
     "relationship_matrix": {
@@ -1201,32 +1201,32 @@
       {
         "cr": "I want my laptop’s integrated graphics to be capable enough to run light or older games (e.g., Minecraft, GTA V, Valorant, emulators) at modest settings and playable frame rates so I can casually game without a bulky gaming rig.",
         "priority": 5.0,
-        "voc": "I want my laptop’s built-in graphics to be good enough to play lighter or older games at modest settings smoothly so I can game casually without needing a big gaming laptop."
+        "voc": "Built-in graphics that can handle lighter or older games, so I don't need a bulky gaming laptop."
       },
       {
         "cr": "I want my casual‑use laptop to have enough RAM (typically at least 8–16 GB) so common multitasking with many browser tabs, streaming, and office apps stays smooth now and over several years.",
         "priority": 5.0,
-        "voc": "I want my everyday laptop to have enough memory so running lots of browser tabs, streaming, and office apps stays smooth now and for the next few years."
+        "voc": "Lots of tabs, streaming, and office apps should stay smooth — now and a few years from now."
       },
       {
         "cr": "I need enough internal storage, on a fast SSD, that my OS, apps, photos, and a few games fit comfortably and everyday use feels snappy.",
         "priority": 4.0,
-        "voc": "I need enough fast SSD storage so my system, apps, photos, and a few games all fit comfortably and everything feels quick to open and use."
+        "voc": "Enough fast storage for my apps, photos, and a few games, so everything opens quickly."
       },
       {
         "cr": "I want my laptop’s casing materials and finishes to resist scratches, stains, fingerprints, and peeling feet or trim so it still looks and feels good after years of daily use.",
         "priority": 2.0,
-        "voc": "I want my laptop’s outer shell and finish to resist scratches, smudges, stains, and loose rubber feet so it still looks and feels good after years of use."
+        "voc": "After years of use it should still look good — no scratches, smudges, or peeling rubber feet."
       },
       {
         "cr": "I’d like my laptop’s design to be practical and understated—a traditional clamshell shape with normal rectangular screen and thin bezels, without flashy gamer styling or odd geometries that waste usable screen or feel out of place at work or class.",
         "priority": 2.0,
-        "voc": "I’d like my laptop to have a simple, practical design with a normal clamshell shape, a regular rectangular screen with thin borders, and none of the flashy gamer styling that looks out of place at work or school."
+        "voc": "A simple, normal clamshell with thin bezels — no flashy gamer styling."
       },
       {
         "cr": "I want my laptop’s cooling system, vents, and dust resistance to work well on real‑world surfaces like desks, laps, beds, and kitchen tables without quickly clogging or needing a cooling pad.",
         "priority": 2.0,
-        "voc": "I want my laptop’s cooling and vents to work well on real surfaces like desks, laps, beds, and kitchen tables without clogging up quickly or needing a separate cooling pad."
+        "voc": "It should stay cool on a desk, my lap, or the bed — without clogging up or needing a cooling pad."
       }
     ],
     "relationship_matrix": {
