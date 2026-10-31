@@ -18,3 +18,7 @@ pipeline/data/chroma/
 !pipeline/data/raw/.gitkeep
 !pipeline/data/intermediate/.gitkeep
 !pipeline/data/output/.gitkeep
+
+# 시각화 출력 (render.py 실행 시 생성)
+visualization/figures/*
+!visualization/figures/.gitkeep

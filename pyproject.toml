@@ -1,0 +1,27 @@
+[project]
+name = "agentic-qfd"
+version = "0.1.0"
+description = "Agentic QFD Framework — LLM multi-agent pipeline for multi-purpose product design (review collection → HoQ → conflict resolution → part deployment → visualization)"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.104.1",
+    "arxiv>=4.0.0",
+    "chromadb>=1.5.9",
+    "google-search-results>=2.4.2",
+    "langchain-anthropic>=1.4.3",
+    "langchain-chroma>=1.1.0",
+    "langchain-openai>=1.2.2",
+    "langgraph>=1.2.1",
+    "matplotlib>=3.9",
+    "nest-asyncio>=1.6.0",
+    "networkx>=3.6.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.3",
+    "praw>=7.8.1",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
+    "scikit-learn>=1.8.0",
+    "tavily-python>=0.7.24",
+    "tqdm>=4.67.3",
+]
