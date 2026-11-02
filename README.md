@@ -82,3 +82,5 @@ pip install -r requirements.txt
 | `OPENAI_API_KEY` | `pipeline/` | OpenAI |
 | `TAVILY_API_KEY`, `SERPAPI_API_KEY` | `pipeline/` | Tavily, SerpAPI |
 | 없음 | `visualization/` | — |
+
+각 폴더의 명령은 가상환경을 활성화한 상태(`source .venv/bin/activate`)에서 `python …`으로 실행한다. uv를 쓰면 활성화 없이 `uv run python …`으로 실행해도 된다.
