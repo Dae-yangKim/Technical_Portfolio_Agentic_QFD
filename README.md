@@ -2,7 +2,7 @@
 - 서울과학기술대학교 데이터사이언스학과
 - 25510099 김대양
 
-**TL;DR: 석사 연구 "An Agentic QFD Framework for Multi-purpose Product Design"의 구현 코드를 세 부분으로 나누어 정리하고, 부분별로 README를 구성했다.**
+**TL;DR: 석사 연구 “An Agentic QFD Framework for Multi-purpose Product Design”의 구현 코드를 테크니컬 포트폴리오 심사 항목(데이터 수집 · 머신러닝 라이브러리 기반 재현 가능한 결과물 · 데이터 시각화)에 맞춰 세 부분으로 나누어 정리하고, 부분별로 README를 구성했다.**
 
 ---
 
@@ -23,14 +23,14 @@ collection/ ──▶ pipeline/ (Stage 0 → 1 → 2 → 3) ──▶ visualizat
 리뷰 수집         CR 추출 → HoQ 구축 → 충돌 해결 → 부품 전개       산출물 그림
 ```
 
-| 단계 | 폴더 | 하는 일 | 산출물 |
-|---|---|---|---|
-| 리뷰 수집 | [`collection/`](collection) | Reddit API로 댓글 리뷰 수집 | 리뷰 데이터 |
-| Stage 0 · CR 추출 | [`pipeline/`](pipeline) | 리뷰를 사용 목적별로 태깅하고 CR 추출 및 Priority 산정 | CR 목록 |
-| Stage 1 · HoQ 구축 | [`pipeline/`](pipeline) | 에이전트 토론으로 EC 도출, Roof와 CR-EC 관계 행렬 작성 | hoq.json |
-| Stage 2 · 충돌 해결 | [`pipeline/`](pipeline) | 요구사항 간 충돌 판정, 에이전트 토론과 Judge 판정으로 전략 결정 | conflict_log.json |
-| Stage 3 · 부품 전개 | [`pipeline/`](pipeline) | Integrated HoQ 구성, PC 도출과 EC-PC 행렬, 목표값으로 사양서 작성 | integrated_hoq.json, part_deployment.json, 사양서 |
-| 시각화 | [`visualization/`](visualization) | 산출물 데이터로 HoQ와 각 행렬 그림 생성 | PNG |
+| 단계 | 폴더 | 심사 항목 | 하는 일 | 산출물 |
+|---|---|---|---|---|
+| 리뷰 수집 | [`collection/`](collection) | 3 (데이터 수집) | Reddit API로 댓글 리뷰 수집 | 리뷰 데이터 |
+| Stage 0 · CR 추출 | [`pipeline/`](pipeline) | 7 (머신러닝 라이브러리 기반 재현 가능한 결과물) | 리뷰를 사용 목적별로 태깅하고 CR 추출 및 Priority 산정 | CR 목록 |
+| Stage 1 · HoQ 구축 | [`pipeline/`](pipeline) | 7 | 에이전트 토론으로 EC 도출, Roof와 CR-EC 관계 행렬 작성 | hoq.json |
+| Stage 2 · 충돌 해결 | [`pipeline/`](pipeline) | 7 | 요구사항 간 충돌 판정, 에이전트 토론과 Judge 판정으로 전략 결정 | conflict_log.json |
+| Stage 3 · 부품 전개 | [`pipeline/`](pipeline) | 7 | Integrated HoQ 구성, PC 도출과 EC-PC 행렬, 목표값으로 사양서 작성 | integrated_hoq.json, part_deployment.json, 사양서 |
+| 시각화 | [`visualization/`](visualization) | 8 (데이터 시각화) | 산출물 데이터로 HoQ와 각 행렬 그림 생성 | PNG |
 
 ### 폴더 구조
 

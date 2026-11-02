@@ -1,53 +1,49 @@
-# visualization — QFD 산출물 시각화
-서울과학기술대학교_데이터사이언스학과_25510099김대양_졸업심사_테크니컬포트폴리오
+# visualization
+- 서울과학기술대학교 데이터사이언스학과
+- 25510099 김대양
 
-[`../pipeline`](../pipeline)이 만든 산출물 json 4개를 읽어 HoQ(House of Quality)와 각 행렬을 matplotlib으로 그리는 코드. `sample_input/`에 예시 입력이 들어 있어 clone 직후 바로 실행할 수 있다.
+**TL;DR: 파이프라인 산출물 json을 읽어 관계 행렬 · 상관 행렬 · 충돌 행렬 그림을 matplotlib으로 그리는 코드를 정리하고, 그림 구성 · 사용 라이브러리 · 사용법 · 결과를 이 문서에 구성했다.**
+
+---
 
 ### 주요 특징
 
-- **파이프라인 산출물을 그대로 입력**: `hoq.json`(Stage 1), `conflict_log.json`(Stage 2), `integrated_hoq.json`·`part_deployment.json`(Stage 3). 전처리나 별도 데이터 없음
-- **그림 9종, 한 번 실행에 전부 생성**: CR 종류별 HoQ, Initial HoQ, Importance, Direction, EC Roof, N×N 충돌 행렬, Integrated HoQ, EC-PC 행렬, PC Roof. Separation으로 모델이 나뉜 경우 모델별로 그림
-- **값에 따라 셀을 색으로 구분**: 관계 +9 진파랑 / +3 연파랑 / −3 연빨강 / −9 진빨강, Roof ±0.9 진한색 / ±0.5 연한색(초록 = 양, 주황 = 음), 충돌 셀 노랑, 판정 제외 셀 회색
-- **Integrated HoQ에서 조정된 셀 강조**: Stage 2 Judge가 바꾼 Importance 셀을 굵은 테두리와 "전→후"(예: 3→0)로 표시해 무엇이 바뀌었는지 한 그림에서 보임
-- **범례 없이 읽히는 라벨**: 행은 `CR-n · 고객 요구 문장`, 열은 `EC-n · 특성 이름(단위)`을 세로로 적음. 번호 순서는 파이프라인 목록 순서와 동일
-- 순수 matplotlib. 셀 크기 고정, 행·열 수와 라벨 길이에 맞춰 그림 크기 자동 계산
+- 입력은 `pipeline/`이 만든 json 4개를 그대로 쓰도록 구성하였고, 별도 전처리나 데이터 변환 없이 산출물 폴더를 지정하면 그림이 생성되도록 코드를 구성하였다.
+- 행렬은 matplotlib의 표 기능 대신 칸마다 사각형을 하나씩 그려서 만들었다. 칸 크기는 고정하고, 그림 전체 크기는 행 · 열 수와 글자 길이에 맞춰 코드가 계산한다. 그래서 행렬이 커지거나 라벨이 길어져도 코드를 수정할 필요 없이 수행 가능하다.
+- 값에 따라 셀 색을 달리하였다. 관계 강도는 양 · 음을 파랑 · 빨강 계열의 두 단계 농도로, 상관은 초록 · 주황 두 단계로, 충돌 셀은 노랑, 판정 제외 셀은 회색으로 구분해 범례 없이 읽히도록 하였다.
+- 조정 전후 비교가 필요한 행렬은 바뀐 셀에 굵은 테두리를 두르고 "전→후" 값을 함께 적어, 어느 셀이 어떻게 바뀌었는지 한 그림에서 보이도록 하였다.
+
+### 사용 라이브러리
+
+| 라이브러리 | 역할 |
+|---|---|
+| matplotlib | 셀 단위 사각형 그리기, 라벨 회전, PNG 저장 |
+| json, argparse | 입력 로드, 실행 옵션 |
 
 ### 설치
 
-저장소 루트에서 환경을 만든다(루트 README 참고). 추가 설정이나 API 키는 필요 없다.
+저장소 루트의 README.md에서 안내된 내용대로 환경을 만들면 된다. 외부 API를 호출하지 않으므로 별도의 키 설정은 필요 없다.
 
 ### 사용법
 
 ```bash
-cd visualization
-uv run python render.py                                      # sample_input → figures/ 에 PNG 14장
-uv run python render.py --only initial_hoq,conflict          # 일부만
-uv run python render.py --input ../pipeline/data/intermediate --out out   # 파이프라인을 직접 돌린 산출물로
+python render.py                                      # sample_input → figures/ 에 PNG 14장
+python render.py --only initial_hoq,conflict          # 일부만
 ```
-
-| 옵션 | 기본값 | 설명 |
-|---|---|---|
-| `--input` | `sample_input` | json 4개가 있는 폴더 |
-| `--out` | `figures` | PNG 저장 폴더 |
-| `--only` | 전부 | 그릴 그림 키 (쉼표 구분): `seg_hoq`, `initial_hoq`, `importance`, `direction`, `roof`, `conflict`, `integrated_hoq`, `ec_pc`, `pc_roof` |
-| `--dpi` | `200` | PNG 해상도 |
-
-파이프라인을 직접 돌린 경우 Stage 1·2 산출물은 `pipeline/data/intermediate/`, Stage 3 산출물은 `pipeline/data/output/`에 생기므로, json 4개를 한 폴더에 모아 `--input`으로 지정한다.
+옵션 정보는 `python render.py --help`로 확인할 수 있다.
 
 ### 결과
 
-`figures/`에 PNG가 생성된다. 예시 입력 기준 14장.
-
 | 키 | 파일 | 내용 |
 |---|---|---|
-| `seg_hoq` | `seg_hoq_common.png`, `seg_hoq_professional.png`, `seg_hoq_casual.png` | CR 종류별 HoQ (관계 행렬 −9…+9, Priority) |
-| `initial_hoq` | `initial_hoq.png` | 세 HoQ를 행 방향으로 쌓은 Initial HoQ |
-| `importance` | `importance_matrix.png` | Importance Matrix (0/3/9) |
-| `direction` | `direction_matrix.png` | Direction Matrix (↑/↓) |
-| `roof` | `roof_matrix.png` | EC 간 상관 (±0.5 / ±0.9) |
-| `conflict` | `conflict_matrix.png` | N×N 충돌 행렬 — 충돌 셀에 근거 EC 표기, 같은 종류 쌍은 × |
-| `integrated_hoq` | `integrated_hoq_<model>.png` | 조정 반영 Integrated HoQ, 조정 셀 강조 (모델별) |
-| `ec_pc` | `ec_pc_matrix_<model>.png` | EC-PC 관계 행렬 (0/3/9, 모델별) |
-| `pc_roof` | `pc_roof_matrix_<model>.png` | PC 간 상관 (모델별) |
+| `seg_hoq` | `seg_hoq_<종류>.png` | 요구사항 종류별 관계 행렬 |
+| `initial_hoq` | `initial_hoq.png` | 종류별 행렬을 행 방향으로 쌓은 전체 관계 행렬 |
+| `importance` | `importance_matrix.png` | 관계 강도 행렬 |
+| `direction` | `direction_matrix.png` | 방향 행렬 |
+| `roof` | `roof_matrix.png` | 기술 특성 간 상관 |
+| `conflict` | `conflict_matrix.png` | 요구사항 간 충돌 행렬 |
+| `integrated_hoq` | `integrated_hoq_<model>.png` | 조정 반영 통합 관계 행렬, 조정 셀 강조 |
+| `ec_pc` | `ec_pc_matrix_<model>.png` | 기술 특성-부품 특성 관계 행렬 |
+| `pc_roof` | `pc_roof_matrix_<model>.png` | 부품 특성 간 상관 |
 
-`<model>`은 `integrated_hoq.json`의 모델 이름(예: `professional_model`, `casual_model`)이며, 단일 모델이면 한 장씩 생성된다.
+> <종류>는 요구사항 종류(공통 · 사용 목적)이고, <model>은 integrated_hoq.json의 모델 이름이다. 모델이 나뉘지 않았으면 한 장씩 생성된다.
