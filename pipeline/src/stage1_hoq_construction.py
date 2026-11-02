@@ -1,13 +1,13 @@
-# Stage 1: 통합 EC Debate → 3블록 Matrix Fill → 통합 HoQ 구성
-#
-# Input:  data/intermediate/final_cr_output.xlsx   (Stage 0 결과)
-#         ChromaDB: data/chroma/chroma_db_review_{purpose}/
-# Output: data/intermediate/hoq.json
-#
-# Phase 1: Stage 0 결과 로드 → Common / Specific Pro / Specific Cas 3블록 분리
-# Phase 2: 통합 EC Debate (Phase 2-A: EC 토론 + Phase 2-B: Roof 토론)
-# Phase 3: 3블록 Matrix Fill (Common 1회 + Specific Pro + Specific Cas)
-# Phase 4: 결과 저장 + 검증
+"""Stage 1: CR 목록에서 EC를 도출하고 세그먼트별 HoQ(관계 행렬 · Roof)를 구성한다.
+
+입력: data/intermediate/final_cr_output.xlsx, data/chroma/chroma_db_review_{purpose}/
+출력: data/intermediate/hoq.json
+
+Phase 1: Stage 0 결과를 Common / Specific Pro / Specific Cas 세 블록으로 로드
+Phase 2: 에이전트 토론으로 EC 도출(2-A) → EC 간 상관 Roof(2-B)
+Phase 3: 블록별 CR-EC 관계 행렬 채우기 (공유 EC × 각 블록 CR)
+Phase 4: 저장 + 검증 (빈 행 · 빈 열, 파생 행렬 정합)
+"""
 import json, os
 import pandas as pd
 
@@ -19,9 +19,7 @@ from src.agents.debate import run_hoq_debate, fill_segment_matrix
 PURPOSES = [settings.SEGMENT_A, settings.SEGMENT_B]
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 1: Stage 0 결과 로드 → 3블록 CR 구성
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 1: Stage 0 결과 로드 → 3블록 CR 구성 ──────────────────────────────────────
 
 def load_stage0_results() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Stage 0 최종 결과 (final_cr_output.xlsx) 로드
@@ -52,7 +50,7 @@ def load_stage0_results() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 def _df_to_cr_list(df: pd.DataFrame, label_col: str, priority_col: str = "priority") -> list[dict]:
     """DataFrame → [{"cr": str, "priority": float, ("voc": str)}, ...] 변환
 
-    voc = 표시용 고객 발화 병기 필드 (Stage 0 생성). 내부 키는 여전히 "cr"."""
+    voc = 표시용 고객 발화 필드 (Stage 0 생성). 내부 키는 "cr"."""
     has_voc = "voc" in df.columns
     out = []
     for _, row in df.iterrows():
@@ -102,9 +100,7 @@ def run_phase1() -> dict[str, list[dict]]:
     return cr_blocks
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 2: 통합 EC Debate (Phase 2-A: EC 토론 + Phase 2-B: Roof 토론)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 2: 통합 EC Debate (Phase 2-A: EC 토론 + Phase 2-B: Roof 토론) ───────────
 
 def run_ec_debate(cr_blocks: dict[str, list[dict]]) -> dict:
     """전체 CR을 고려한 통합 EC Debate 실행
@@ -146,9 +142,7 @@ def run_ec_debate(cr_blocks: dict[str, list[dict]]) -> dict:
     return result
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 3: 3블록 Matrix Fill (공유 EC × CR 블록별)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 3: 3블록 Matrix Fill (공유 EC × CR 블록별) ───────────────────────────────
 
 def run_matrix_fill(
     ec_list: list[dict],
@@ -182,7 +176,6 @@ def run_matrix_fill(
         }
         print(f"  Common        : {len(cr_blocks['common'])} CRs × {len(ec_list)} ECs")
 
-    # ② Specific Pro CRs
     if cr_blocks["specific_pro"]:
         pro_matrices = fill_segment_matrix(ec_list, cr_blocks["specific_pro"], segment=settings.SEGMENT_A)
         results["specific_professional"] = {
@@ -191,7 +184,6 @@ def run_matrix_fill(
         }
         print(f"  Specific Pro  : {len(cr_blocks['specific_pro'])} CRs × {len(ec_list)} ECs")
 
-    # ③ Specific Cas CRs
     if cr_blocks["specific_cas"]:
         cas_matrices = fill_segment_matrix(ec_list, cr_blocks["specific_cas"], segment=settings.SEGMENT_B)
         results["specific_casual"] = {
@@ -203,9 +195,7 @@ def run_matrix_fill(
     return results
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 4: 결과 저장 + 검증
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 4: 결과 저장 + 검증 ─────────────────────────────────────────────────────
 
 def _block_to_serializable(block: dict) -> dict:
     """블록 결과에서 JSON 직렬화 가능한 필드만 추출"""
@@ -285,7 +275,7 @@ def run_phase4(results: dict[str, dict], debate_result: dict | None = None) -> s
         if block_key in results:
             hoq_output[block_key] = _block_to_serializable(results[block_key])
 
-    # 빈 행·빈 열 사후 검출 (발송 9 #22 — 표준 HoQ 점검): 실제 관계 행렬 기준
+    # 빈 행·빈 열 사후 검출: 실제 관계 행렬 기준
     ec_names_all = [ec["ec"] for ec in (debate_result.get("ec_list", []) if debate_result else [])]
     empty_cr_rows: dict[str, list[str]] = {}
     used_ecs: set[str] = set()
@@ -348,7 +338,6 @@ def run_phase4(results: dict[str, dict], debate_result: dict | None = None) -> s
             "ec_consensus": debate_result.get("ec_consensus"),
             "roof_consensus": debate_result.get("roof_consensus"),
             "shared_ec_count": len(debate_result.get("ec_list", [])),
-            # 발송 9 #22 빈 행·빈 열 검사 기록
             "coverage": {
                 "ec_debate_uncovered_crs": debate_result.get("ec_coverage_gaps", []),
                 "empty_cr_rows": empty_cr_rows,
@@ -377,9 +366,7 @@ def run_phase4(results: dict[str, dict], debate_result: dict | None = None) -> s
     return hoq_path
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# 전체 파이프라인
-# ═════════════════════════════════════════════════════════════════════════════
+# ── 전체 파이프라인 ────────────────────────────────────────────────────────────────
 
 def run() -> None:
     """Stage 1 전체 파이프라인: Phase 1 → Phase 2 → Phase 3 → Phase 4"""
@@ -387,13 +374,10 @@ def run() -> None:
     print("  Stage 1: HoQ Construction (Integrated HoQ)")
     print("=" * 60)
 
-    # Phase 1: CR 3블록 로드
     cr_blocks = run_phase1()
 
-    # Phase 2: 통합 EC Debate (2-A: EC 토론 + 2-B: Roof 토론)
     debate_result = run_ec_debate(cr_blocks)
 
-    # Phase 3: 3블록 Matrix Fill
     results = run_matrix_fill(
         ec_list=debate_result["ec_list"],
         roof_matrix=debate_result["roof_matrix"],
@@ -401,10 +385,8 @@ def run() -> None:
         debate_messages=debate_result.get("messages", []),
     )
 
-    # Phase 4: 저장 + 검증
     hoq_path = run_phase4(results, debate_result)
 
-    # 요약
     print(f"\n{'=' * 60}")
     print("  Stage 1 완료 요약")
     print("=" * 60)

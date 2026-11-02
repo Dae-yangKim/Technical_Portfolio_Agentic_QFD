@@ -1,10 +1,12 @@
-# Multi-Agent Debate 프레임워크
-# Stage 1 (HoQ Construction) + Stage 2 (Conflict Resolution) 그래프 통합 관리
-#
-# Stage 1 구조:
-#   Phase 2-A: EC 리스트 토론 (engineering_expert ↔ market_expert, 도구 호출 포함)
-#   Phase 2-B: Roof Matrix 토론 (engineering_expert ↔ market_expert)
-#   Phase 3:   세그먼트별 Matrix Fill (공유 EC × 각 세그먼트 CR)
+"""멀티에이전트 토론 그래프 — Stage 1 · 2 · 3가 공유하는 LangGraph 정의.
+
+Stage 1: EC 토론, Roof 토론, CR-EC 관계 행렬 채우기 (Engineering ↔ Market)
+Stage 2: 세그먼트 Advocate 토론 (Orchestrator 진행) → Judge (Market ↔ Engineering) → 조정값 검증
+Stage 3: PC 토론, EC-PC 관계 행렬, PC Roof, 목표값 토론, 사양서 근거 생성
+
+공통 규칙: 라운드 상한은 settings.MAX_DEBATE_ROUNDS · MAX_JUDGE_ROUNDS, 척도(0/3/9, ±0.5/±0.9)와
+출력 구조는 코드가 검증하며, 모든 토론은 data/intermediate/logs/*.txt 에 저장한다.
+"""
 import re
 import json, os, time
 from datetime import datetime
@@ -50,9 +52,7 @@ from src.prompts import (
     PC_SPEC_SYSTEM,
 )
 
-# ═════════════════════════════════════════════════════════════════════════════
-# LLM & Embeddings
-# ═════════════════════════════════════════════════════════════════════════════
+# ── LLM & Embeddings ────────────────────────────────────────────────────────
 
 LOG_DIR = f"{settings.INTERMEDIATE_PATH}/logs"
 
@@ -108,6 +108,7 @@ _chat_llm = ChatOpenAI(model=settings.MODEL, service_tier=settings.SERVICE_TIER)
 
 
 def _get_review_db(segment: str) -> Chroma:
+    """세그먼트별 리뷰 임베딩 DB(ChromaDB)를 연다."""
     return Chroma(
         collection_name=f"review_{segment.lower()}",
         embedding_function=_embeddings,
@@ -115,9 +116,7 @@ def _get_review_db(segment: str) -> Chroma:
     )
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Tool Definitions — @tool 데코레이터로 에이전트가 직접 호출
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Tool Definitions — @tool 데코레이터로 에이전트가 직접 호출 ─────────────────────────────
 
 @tool
 def search_arxiv(query: str) -> str:
@@ -218,9 +217,7 @@ ENGINEERING_TOOLS = [search_arxiv, search_google, search_reviews]
 MARKET_TOOLS = [search_tavily, search_google, search_reviews]
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Shared Helpers (Matrix Fill용 — 도구 없이 직접 호출)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Shared Helpers (Matrix Fill용 — 도구 없이 직접 호출) ─────────────────────────────
 
 def _llm_json(system: str, user: str) -> dict:
     """도구 없이 JSON 응답만 받는 직접 호출 (Matrix Fill용)"""
@@ -250,6 +247,7 @@ def _llm_text(system: str, user: str) -> str:
 
 
 def _format_crs(cr_list: list[dict]) -> str:
+    """CR 목록을 프롬프트용 글머리 문자열로 만든다 (문장 + priority)."""
     lines = []
     for cr in cr_list:
         lines.append(f'  - "{cr["cr"]}" (priority: {cr["priority"]})')
@@ -275,13 +273,11 @@ def _retrieve_reviews(segment: str, cr_list: list[dict], k_per_cr: int = 3) -> s
     return "\n".join(lines) if lines else ""
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 1: EC Debate (Phase 2-A) — EC 리스트 토론
+# ── Stage 1: EC Debate (Phase 2-A) — EC 리스트 토론 ──────────────────────────────
 # 에이전트가 도구를 직접 호출하여 근거 수집 후 EC 제안/검토
-# ═════════════════════════════════════════════════════════════════════════════
 
 VALID_REL_VALUES = {-9, -3, 0, 3, 9}
-VALID_IMPORTANCE_VALUES = {0, 3, 9}   # Judge 조정값 척도 (문서 2-1-1·2-3-3)
+VALID_IMPORTANCE_VALUES = {0, 3, 9}   # Judge 조정값 척도
 VALID_ROOF_VALUES = {-0.9, -0.5, 0.5, 0.9}
 
 MIN_EC_DEBATE_ROUNDS = 2   # EC 토론 최소 라운드
@@ -296,8 +292,7 @@ def _snap_to_valid(value: int | float, valid_set: set) -> int | float:
 def _validate_roof(result: dict) -> dict:
     """Roof matrix 값을 허용 범위로 보정 (Stage 1 Roof · Stage 3 PC Roof 공용)
 
-    발송 9 #11: 0 / null / 비수치는 "상관 없음 = 미기재"이므로 항목을 삭제한다.
-    (종전에는 null→0.0 저장, 0→−0.5 보정으로 없는 약상관이 생겼음)
+    0 / null / 비수치는 "상관 없음 = 미기재"이므로 항목을 삭제한다.
     허용값 밖의 수치는 최근접 허용값으로 보정한다."""
     snapped = 0
     dropped = 0
@@ -347,7 +342,7 @@ def _parse_json_from_ai(message: AIMessage) -> dict:
     # ```json ... ``` 래핑 제거
     if text.startswith("```"):
         lines = text.split("\n")
-        # 첫 줄(```json)과 마지막 줄(```) 제거
+        # 코드 펜스(```)로 시작하는 줄 제거
         lines = [l for l in lines if not l.strip().startswith("```")]
         text = "\n".join(lines)
     return json.loads(text)
@@ -357,7 +352,7 @@ def _parse_json_from_ai(message: AIMessage) -> dict:
 
 def _compute_ec_range(state: QFDState) -> tuple[int, int]:
     """CR 수에 연동하여 EC 수 범위를 결정 (상한은 settings.MAX_ECS)"""
-    # Common CR은 두 리스트에 모두 들어 있으므로 중복 없이 셈 (발송 10 A4)
+    # Common CR은 두 리스트에 모두 들어 있으므로 중복 없이 셈
     total_crs = len(_dedupe_crs(state["cr_list_a"], state["cr_list_b"]))
     max_ecs = min(settings.MAX_ECS, max(12, total_crs))
     min_ecs = max(8, max_ecs // 2)
@@ -379,7 +374,7 @@ def _check_compound_ecs(ec_list: list[dict]) -> list[str]:
     return warnings
 
 
-# ── 발송 9 #22: 빈 행(coverage) 검사 — Stage 1 EC 토론 · Stage 3 PC 토론 공용 ──
+# ── 빈 행(coverage) 검사 — Stage 1 EC 토론 · Stage 3 PC 토론 공용 ──────────────
 
 def _dedupe_crs(*lists: list[dict]) -> list[dict]:
     """여러 CR 리스트를 텍스트 기준으로 중복 없이 합침 (Common CR은 A·B 양쪽에 있음)"""
@@ -394,6 +389,7 @@ def _dedupe_crs(*lists: list[dict]) -> list[dict]:
 
 
 def _format_crs_with_ids(cr_list: list[dict], name_to_id: dict[str, str]) -> str:
+    """CR 목록을 ID 접두가 붙은 프롬프트용 문자열로 만든다 (CR-n: 문장)."""
     return "\n".join(
         f'  {name_to_id.get(cr["cr"], "?")}: "{cr["cr"]}" (priority: {cr["priority"]})'
         for cr in cr_list
@@ -466,7 +462,7 @@ def _format_gap_block(
 def engineering_expert_ec_node(state: QFDState) -> dict:
     """Engineering Expert: EC 리스트 제안/수정 (도구 호출 가능)
 
-    발송 9 #22: EC마다 담당 CR ID(covers)를 제출받아 빈 행(미커버 CR)을 라운드 안에서
+    EC마다 담당 CR ID(covers)를 제출받아 빈 행(미커버 CR)을 라운드 안에서
     검사한다. 미커버 CR이 있으면 복합 EC 검사와 같은 방식으로 finalized를 거부하고
     다음 라운드에 목록을 주입한다. 마지막 라운드에는 채택하되 기록한다.
     """
@@ -587,7 +583,6 @@ Output JSON:
             tool_args = tc["args"]
             print(f"    🔧 [eng] {tool_name}({list(tool_args.values())[0][:60]}...)")
 
-            # 도구 실행
             tool_map = {t.name: t for t in ENGINEERING_TOOLS}
             if tool_name in tool_map:
                 try:
@@ -606,11 +601,9 @@ Output JSON:
     if tool_call_count > 0:
         print(f"    📊 [eng] 도구 {tool_call_count}회 호출 완료")
 
-    # Round 2+에서 도구 미호출 경고
     if state["iteration"] > 0 and tool_call_count == 0:
         print("    ⚠️  Round 2+에서 도구 미호출 — 근거 없이 피드백 수용 가능성")
 
-    # JSON 파싱
     try:
         result = _parse_json_from_ai(response)
     except json.JSONDecodeError:
@@ -620,24 +613,22 @@ Output JSON:
             user_content + "\n\nIMPORTANT: Output ONLY valid JSON. No other text.",
         )
 
-    # EC 수 범위 검증
     ec_count = len(result.get("ec_list", []))
     if ec_count < min_ecs or ec_count > max_ecs:
         print(f"    ⚠️  EC 수 {ec_count}개 (허용 범위: {min_ecs}–{max_ecs})")
 
-    # 복합 EC 검증
     compound_warnings = _check_compound_ecs(result.get("ec_list", []))
     for w in compound_warnings:
         print(f"    ⚠️  {w}")
 
-    # serves 필드가 있으면 제거 (하위 호환) + 이름 정규화: LLM이 표시용 "EC-n: " 접두를
-    # 이름에 복사하는 경우가 있어 제거 (10/1 R3 실측)
+    # 스키마 외 필드(serves) 제거 + 이름 정규화: LLM이 표시용 "EC-n: " 접두를
+    # 이름에 복사하는 경우가 있어 제거
     for ec in result.get("ec_list", []):
         ec.pop("serves", None)
         if isinstance(ec.get("ec"), str):
             ec["ec"] = re.sub(r"^\s*EC-\d+\s*:\s*", "", ec["ec"]).strip()
 
-    # 빈 행 검사 (발송 9 #22): covers ID → 정본 CR 이름 치환, 미커버 CR 산출
+    # 빈 행 검사: covers ID → 정본 CR 이름 치환, 미커버 CR 산출
     gaps, n_nocov = _coverage_gaps(result.get("ec_list", []), "covers", cr_ids)
     if n_nocov:
         print(f"    ⚠️  covers 필드 없는 EC {n_nocov}개")
@@ -660,13 +651,12 @@ Output JSON:
         ],
     }
 
-    # EC 수 범위 위반 여부
     ec_out_of_range = ec_count < min_ecs or ec_count > max_ecs
 
     # 최소 라운드 강제: MIN_EC_DEBATE_ROUNDS 미만이면 finalized 무시
     if state["iteration"] > 0:
         if state["iteration"] + 1 >= MIN_EC_DEBATE_ROUNDS:
-            # 복합 EC / EC 수 범위 위반이면 finalized를 거부 (미커버 CR은 기록만 — 발송 10 A1)
+            # 복합 EC / EC 수 범위 위반이면 finalized를 거부
             if compound_warnings:
                 print(f"    ⚠️  복합 EC {len(compound_warnings)}개 발견 — finalized 거부, 추가 라운드")
                 update["consensus"] = False
@@ -674,7 +664,7 @@ Output JSON:
                 print(f"    ⚠️  EC 수 {ec_count}개 (허용: {min_ecs}–{max_ecs}) — finalized 거부, 추가 라운드")
                 update["consensus"] = False
             else:
-                # 발송 10 A1: 미커버 CR은 합의를 막지 않고 기록만 (EC 상한 우선)
+                # 미커버 CR은 합의를 막지 않고 기록만 (EC 상한 우선)
                 if gaps:
                     print(f"    ℹ️  미커버 CR {len(gaps)}개 — 기록 (EC 상한 우선, 합의 판정에 영향 없음)")
                 update["consensus"] = result.get("finalized", False)
@@ -834,10 +824,8 @@ def build_ec_debate_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 1: Roof Debate (Phase 2-B) — Roof Matrix 토론
+# ── Stage 1: Roof Debate (Phase 2-B) — Roof Matrix 토론 ───────────────────────
 # 확정된 EC에 대해 EC 간 상관관계만 토론
-# ═════════════════════════════════════════════════════════════════════════════
 
 def _generate_ec_pairs(ec_list: list[dict]) -> str:
     """EC 리스트에서 모든 고유 쌍 목록을 생성"""
@@ -1106,10 +1094,7 @@ def build_roof_debate_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 1: Combined HoQ Debate (Phase 2-A + 2-B 순차 실행)
-# 하위 호환: build_hoq_debate_graph()는 EC → Roof 순차 실행 래퍼
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 1: Combined HoQ Debate (Phase 2-A + 2-B 순차 실행) ────────────────────
 
 def run_hoq_debate(state: QFDState) -> dict:
     """Phase 2-A (EC 토론) + Phase 2-B (Roof 토론) 순차 실행
@@ -1157,7 +1142,6 @@ def run_hoq_debate(state: QFDState) -> dict:
     roof_messages = roof_result["messages"]
     print(f"  [Phase 2-B] Roof 토론 완료: {roof_rounds}라운드")
 
-    # 토론 로그 저장
     save_debate_log(
         "stage1_ec_debate.txt",
         ec_messages,
@@ -1169,7 +1153,7 @@ def run_hoq_debate(state: QFDState) -> dict:
         f"Stage 1 — Roof Matrix Debate ({roof_rounds} rounds)",
     )
 
-    # 결합 — consensus는 하드코딩하지 않고 각 토론의 실제 합의 여부를 기록
+    # 결합 — consensus는 두 토론의 실제 합의 여부를 함께 기록
     ec_consensus = ec_result.get("consensus", False)
     roof_consensus = roof_result.get("consensus", False)
     return {
@@ -1185,16 +1169,14 @@ def run_hoq_debate(state: QFDState) -> dict:
         ],
         "ec_rounds": ec_rounds,
         "roof_rounds": roof_rounds,
-        # 발송 9 #22: EC 토론 종료 시점의 미커버 CR (마지막 라운드까지 남은 빈 행)
+        # EC 토론 종료 시점의 미커버 CR (마지막 라운드까지 남은 빈 행)
         "ec_coverage_gaps": ec_result.get("coverage_gaps", []) or [],
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 1: Per-segment Matrix Fill (Debate-based)
+# ── Stage 1: Per-segment Matrix Fill (Debate-based) ─────────────────────────
 # Engineering Expert ↔ Market Expert 토론으로 Relationship Matrix 채움
 # 각 Agent는 2-Phase CoT (Reasoning → JSON) 방식으로 추론
-# ═════════════════════════════════════════════════════════════════════════════
 
 MATRIX_FILL_CHUNK_SIZE = 5  # CR 분할 단위
 
@@ -1474,9 +1456,7 @@ def fill_segment_matrix(
         for debate_round in range(1, max_rounds + 1):
             total_debate_rounds += 1
 
-            # ══════════════════════════════════════════════════
-            # Engineering Expert — Phase 1: CoT Reasoning
-            # ══════════════════════════════════════════════════
+            # ── Engineering Expert — Phase 1: CoT Reasoning ─────────────────
             if debate_round == 1:
                 eng_user_msg = f"""Analyze the CR-EC relationships for {block_label} CRs.
 (Chunk {chunk_idx}/{total_chunks})
@@ -1541,9 +1521,7 @@ After addressing all feedback, provide your revised analysis for the full chunk.
                 "content": eng_reasoning_text,
             })
 
-            # ══════════════════════════════════════════════════
-            # Engineering Expert — Phase 2: JSON Structuring
-            # ══════════════════════════════════════════════════
+            # ── Engineering Expert — Phase 2: JSON Structuring ──────────────
             eng_json_msg = f"""Convert your reasoning into a Relationship Matrix.
 
 ### Your reasoning analysis:
@@ -1585,9 +1563,7 @@ Output JSON:
                 "content": eng_proposal,
             })
 
-            # ══════════════════════════════════════════════════
-            # Market Expert — Phase 1: CoT Review
-            # ══════════════════════════════════════════════════
+            # ── Market Expert — Phase 1: CoT Review ─────────────────────────
             mkt_user_msg = f"""Review the Engineering Expert's CR-EC relationship proposal.
 
 ### Engineering Expert's reasoning:
@@ -1630,9 +1606,7 @@ Be specific about which values you agree or disagree with, and why."""
                 "content": mkt_reasoning_text,
             })
 
-            # ══════════════════════════════════════════════════
-            # Market Expert — Phase 2: JSON Verdict
-            # ══════════════════════════════════════════════════
+            # ── Market Expert — Phase 2: JSON Verdict ───────────────────────
             mkt_json_msg = f"""Structure your review into a JSON verdict.
 
 ### Your review analysis:
@@ -1715,7 +1689,7 @@ Output JSON:
         f"{len(accumulated_rel)} CRs x {len(ec_list)} ECs, "
         f"총 {total_debate_rounds} debate rounds"
     )
-    # 10/11: 밀도는 규칙이 아니라 관찰값으로만 기록 (비0 비율, CR당 평균 연결 EC 수)
+    # 밀도는 규칙이 아니라 관찰값으로만 기록 (비0 비율, CR당 평균 연결 EC 수)
     _cells = [v for row in accumulated_rel.values() for v in row.values()]
     _nz = sum(1 for v in _cells if v)
     if _cells:
@@ -1737,16 +1711,13 @@ Output JSON:
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 2: Conflict Resolution Debate
+# ── Stage 2: Conflict Resolution Debate ─────────────────────────────────────
 # Phase A: Advocate Debate
-#   orchestrator → pro_advocate → cas_advocate
-#        ↑________________________________| (continue)
-#                                         ↓ (end) → debate summary 반환
+# pro_advocate → cas_advocate → orchestrator ─(continue)→ pro_advocate
+#                                            └(end)→ debate summary 반환
 # Phase B: Judge (2-Agent)
-#   market_expert_judge ↔ engineering_expert_judge
-#        → strategy + adjusted importance 반환
-# ═════════════════════════════════════════════════════════════════════════════
+# market_expert_judge ↔ engineering_expert_judge
+# → strategy + adjusted importance 반환
 
 # Advocate에게 부여할 도구: ChromaDB 리뷰 검색 전용
 ADVOCATE_TOOLS = [search_reviews]
@@ -1761,7 +1732,6 @@ def _build_conflict_context(state: QFDState) -> str:
     ctx = state["current_conflict"]
     lines = ["### Conflict Group Context"]
 
-    # 충돌 CR pairs
     lines.append(f"\n**Segment A ({state['segment_a']}) CRs in this group:**")
     for cr in ctx.get("cr_a_list", []):
         cr_data = next((c for c in state["cr_list_a"] if c["cr"] == cr), {})
@@ -1786,7 +1756,7 @@ def _build_conflict_context(state: QFDState) -> str:
             priority = cr_data.get("priority", "?")
             lines.append(f'  - "{cr}" (priority: {priority})')
 
-    # 10/13: 이 그룹의 충돌 셀(= Judge의 Adjustable cells)을 토론에도 동일하게 제시 —
+    # 이 그룹의 충돌 셀(= Judge의 Adjustable cells)을 토론에도 동일하게 제시 —
     # 양보·양보 한계는 이 칸들을 두고 이뤄져야 조정으로 이어진다.
     scope = _group_scope_cells(state)
     if scope:
@@ -1796,7 +1766,6 @@ def _build_conflict_context(state: QFDState) -> str:
             lines.append(f'  - "{cr[:60]}..." × "{ec}": current importance '
                          f'{imp_now.get(cr, {}).get(ec, 0)}')
 
-    # 충돌 셀 상세
     lines.append("\n**Conflict Details:**")
     for cell in ctx.get("cells", []):
         if cell["conflict_type"] == "direct":
@@ -1822,7 +1791,6 @@ def _build_conflict_context(state: QFDState) -> str:
                 f'drags the other against the opposing CR'
             )
 
-    # Importance Matrix 정보
     lines.append("\n**Importance Matrix (relevant CRs × ECs):**")
     imp = state.get("importance_matrix", {})
     for cr in ctx.get("cr_a_list", []) + ctx.get("cr_b_list", []) + ctx.get("cr_common_list", []):
@@ -1833,7 +1801,6 @@ def _build_conflict_context(state: QFDState) -> str:
                 for ec, v in nonzero.items():
                     lines.append(f"    {ec}: {v}")
 
-    # Direction Matrix 정보
     lines.append("\n**Direction Matrix (relevant CRs × ECs):**")
     dir_m = state.get("direction_matrix", {})
     for cr in ctx.get("cr_a_list", []) + ctx.get("cr_b_list", []) + ctx.get("cr_common_list", []):
@@ -1856,7 +1823,6 @@ def _run_advocate(
     seg_label = "pro" if segment == settings.SEGMENT_A else "cas"
     conflict_ctx = _build_conflict_context(state)
 
-    # 이전 라운드 메시지 수집
     prev_messages = state.get("messages", [])
     orchestrator_msgs = [m for m in prev_messages if m["agent"] == "orchestrator"]
     last_orchestrator = orchestrator_msgs[-1] if orchestrator_msgs else None
@@ -2013,7 +1979,6 @@ def orchestrator_node(state: QFDState) -> dict:
                  + len(_ctx.get("cr_common_list", [])))
     cur_round = state["iteration"]
 
-    # 현재까지의 토론 내용 수집
     prev_messages = state.get("messages", [])
     pro_msgs = [m for m in prev_messages if m["agent"] == "pro_advocate"]
     cas_msgs = [m for m in prev_messages if m["agent"] == "cas_advocate"]
@@ -2024,7 +1989,7 @@ def orchestrator_node(state: QFDState) -> dict:
         cas_msgs[-1]["content"], indent=2, ensure_ascii=False
     ) if cas_msgs else "No statement."
 
-    # 이전 라운드 Orchestrator 판정 기록 (실제 라운드만 — 준비 메시지 없음)
+    # 이전 라운드 Orchestrator 판정 기록
     orc_history = [m for m in prev_messages if m["agent"] == "orchestrator"]
     prev_states = [
         m["content"].get("convergence_state", "unknown")
@@ -2111,7 +2076,7 @@ def orchestrator_node(state: QFDState) -> dict:
         prev_stable + 1 if cur_state in ("stable", "deadlocked") else 0
     )
 
-    # ── 종료 판정 코드 강제 (매뉴얼 2-2-3) — LLM에게 위임하지 않음 ──
+    # ── 종료 판정 코드 강제 — LLM에게 위임하지 않음 ──
     if not should_escalate:
         if consecutive_stable >= 2:
             should_escalate = True
@@ -2193,9 +2158,7 @@ def build_debate_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 2: Judge Phase (Market Expert ↔ Engineering Expert)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 2: Judge Phase (Market Expert ↔ Engineering Expert) ───────────────
 
 MIN_JUDGE_ROUNDS = 2  # Judge 토론 최소 라운드
 VALID_STRATEGIES = {"Compromise", "Selection", "Separation"}
@@ -2284,7 +2247,6 @@ def _build_judge_context(state: QFDState) -> str:
     lines.append("\n### Conflict Group Details")
     lines.append(_build_conflict_context(state))
 
-    # Roof Matrix 정보 (기술적 상관관계)
     roof = state.get("roof_matrix", {})
     if roof:
         lines.append("\n### Roof Matrix (EC correlations):")
@@ -2308,7 +2270,7 @@ def _build_judge_context(state: QFDState) -> str:
         for i, name in enumerate(ec_names, 1):
             lines.append(f'EC-{i}: "{name}"')
 
-    # 10/10: 조정 가능 셀 = 이 그룹에 배속된 충돌 셀 (EC 기준 그룹화와 짝)
+    # 조정 가능 셀 = 이 그룹에 배속된 충돌 셀 (EC 기준 그룹화와 짝)
     scope = _group_scope_cells(state)
     if scope:
         cr_id_of = {name: cid for cid, name in cr_ids.items()}
@@ -2327,7 +2289,7 @@ def _build_judge_context(state: QFDState) -> str:
 
 
 def _format_validator_feedback(state: QFDState, for_engineering: bool) -> str:
-    """Validator 피드백을 두 종류로 나눠 전달 (발송 9 #14)
+    """Validator 피드백을 두 종류로 나눠 전달
 
     - 오류(반드시 수정): "VALIDATION ERRORS" 헤더
     - 재고 요청(오류 아님, 성찰): 별도 헤더 — 강제가 아니라는 점을 명시
@@ -2368,7 +2330,7 @@ def _count_cells(adj: dict) -> int:
 
 
 def _group_scope_cells(state: QFDState) -> set[tuple[str, str]]:
-    """이 그룹에 배속된 충돌 셀 (CR, EC) 집합 — Judge가 조정할 수 있는 유일한 범위 (10/10).
+    """이 그룹에 배속된 충돌 셀 (CR, EC) 집합 — Judge가 조정할 수 있는 유일한 범위.
 
     direct 셀은 (cr_a, ec)·(cr_b, ec), roof 셀은 (cr_a, ec_a)·(cr_b, ec_b)."""
     cells: set[tuple[str, str]] = set()
@@ -2387,8 +2349,7 @@ def _resolve_and_guard_adjustments(
 ) -> tuple[dict, list[str]]:
     """LLM의 final_adjustments(ID 키) → 정본 이름 치환 → 셀 가드 → 그룹 범위 가드.
 
-    정상 경로(Eng finalized)와 라운드 소진 경로가 반드시 같은 처리를 거친다
-    (발송 9 #1·#2 — 예비 경로가 ID 치환을 건너뛰던 결함 제거).
+    정상 경로(Eng finalized)와 라운드 소진 경로가 반드시 같은 처리를 거친다.
 
     Returns:
         (가드를 통과한 조정, 그룹 밖이라 폐기된 셀 설명 목록)"""
@@ -2396,11 +2357,11 @@ def _resolve_and_guard_adjustments(
     ec_ids = _make_id_map(_judge_ec_names(state), "EC")
     adj = _resolve_matrix_ids(raw or {}, cr_ids, ec_ids, "Judge")
     original = state.get("importance_matrix", {})
-    # 10/10 (4-2): 0/3/9 밖의 값은 여기서 보정하지 않는다. 검증기가 [INVALID VALUE]로
+    # 0/3/9 밖의 값은 여기서 보정하지 않는다. 검증기가 [INVALID VALUE]로
     # 반려해 Judge가 다시 내게 하고, MAX 라운드 폴백에서만 기록을 남기며 보정한다.
     guarded = _guard_existing_cells_only(adj, original)
-    # 10/10: 이 그룹에 배속된 충돌 셀만 조정 가능 — 다른 그룹의 셀은 폐기
-    # (EC 기준 그룹화와 짝: 셀의 소속 그룹이 하나로 정해지므로 그룹 간 덮어쓰기가 사라진다)
+    # 이 그룹에 배속된 충돌 셀만 조정 가능 — 다른 그룹의 셀은 폐기
+    # (EC 기준 그룹화와 짝: 셀의 소속 그룹이 하나로 정해지므로 그룹 간 덮어쓰기가 발생하지 않는다)
     scope = _group_scope_cells(state)
     if not scope:
         return guarded, []
@@ -2620,8 +2581,7 @@ def _guard_existing_cells_only(adj: dict, original: dict) -> dict:
             if val != 0 and original.get(cr, {}).get(ec, 0) == 0:
                 dropped += 1
                 continue
-            # 원본과 같은 값은 조정이 아님 — 문서 2-3-3 "변경 셀만" (10/1: Judge가
-            # "기존 값 재확인" 셀을 조정으로 제출해 0건 반려 규칙이 우회되던 문제)
+            # 원본과 같은 값은 조정이 아니므로 "변경 셀"로 세지 않는다
             if val == original.get(cr, {}).get(ec, 0):
                 unchanged += 1
                 continue
@@ -2670,9 +2630,9 @@ def _validate_judge_result(
 ) -> list[str]:
     """Engineering Expert Judge의 최종 결과를 검증하여 오류 목록 반환
 
-    발송 8: final_adjustments는 "변경 셀만" 제출 방식 — 미변경 CR은 원본이
-    유지되므로 CR 누락 검사는 폐지.
-    발송 9 #1: Compromise/Selection인데 조정 셀이 0개이면 오류 — 매 라운드 반려."""
+    final_adjustments는 "변경 셀만" 제출 방식 — 미변경 CR은 원본이
+    유지되므로 CR 누락은 검사하지 않는다.
+    Compromise/Selection인데 조정 셀이 0개이면 오류 — 매 라운드 반려."""
     errors: list[str] = []
 
     # ── 공통 검증 ──
@@ -2734,7 +2694,7 @@ def _translate_concessions_to_adjustments(
     strategy: str,
     selected_segment: str | None,
 ) -> tuple[dict, dict]:
-    """마지막 라운드에도 조정이 비었을 때의 번역 전용 호출 1회 (발송 9 #1)
+    """마지막 라운드에도 조정이 비었을 때의 번역 전용 호출 1회
 
     전략은 확정된 것으로 두고, 토론 요약의 양보·합의를 셀 조정으로 옮기기만
     요청한다. 도구 없음. 결과는 정상 경로와 같은 ID 치환·셀 가드를 거친다.
@@ -2768,7 +2728,7 @@ existing cells listed in the context. Output JSON only."""
 
 
 def judge_validator_node(state: QFDState) -> dict:
-    """Judge 결과 검증 노드 — Strategy별 필수 조건 확인 (발송 9 #1)
+    """Judge 결과 검증 노드 — Strategy별 필수 조건 확인
 
     - finalized & 검증 통과 → consensus=True
     - 검증 실패 + 라운드 여유 → 재시도 요청 (조정 0건은 매 라운드 반려)
@@ -2788,7 +2748,7 @@ def judge_validator_node(state: QFDState) -> dict:
     if not finalized:
         if not at_max:
             return {"consensus": False}
-        # 라운드 소진 — 마지막 제안을 정상 경로와 동일하게 처리 (구 예비 경로 대체)
+        # 라운드 소진 — 마지막 제안을 정상 경로와 동일하게 처리
         print(f"  [Validator] MAX_JUDGE_ROUNDS 도달, finalized=false → "
               f"마지막 제안을 정규 경로(ID 치환·셀 가드)로 채택")
         strategy = (last_eng.get("agreed_strategy")
@@ -2816,7 +2776,7 @@ def judge_validator_node(state: QFDState) -> dict:
 
     # ── Strategy-aware Validation ──
     errors = _validate_judge_result(strategy, selected_segment, adjusted)
-    # 10/10: 그룹 밖 셀을 조정하려 했으면 반려 (라운드 여유가 있을 때) — Judge가 범위 안에서 다시 내게 한다
+    # 그룹 밖 셀을 조정하려 했으면 반려 (라운드 여유가 있을 때) — Judge가 범위 안에서 다시 내게 한다
     if scope_violations and not at_max:
         errors.append(
             f"{SCOPE_PREFIX} these cells belong to another conflict group and were "
@@ -2826,7 +2786,7 @@ def judge_validator_node(state: QFDState) -> dict:
 
     # ── Separation 재고 요청 (성찰 — 오류 아님, 1회만) ──
     # 한 세그먼트만 있는 그룹에서 Separation을 골랐을 때만 재고를 요청한다.
-    # 9-vs-9 개수는 프롬프트와 같이 참고 정보일 뿐 판정 조건이 아니다 (10/10).
+    # 9-vs-9 개수는 프롬프트와 같이 참고 정보일 뿐 판정 조건이 아니다.
     # 재고 후에도 Separation을 유지하면 그대로 수용한다 — 최종 결정은 Judge의 것.
     if (strategy == "Separation"
             and not state.get("separation_reconsidered", False)
@@ -2870,7 +2830,6 @@ def judge_validator_node(state: QFDState) -> dict:
         update["consensus"] = True
         return update
 
-    # 검증 실패
     for err in errors:
         print(f"  [Validator] ❌ {err[:140]}")
 
@@ -2911,7 +2870,7 @@ def judge_validator_node(state: QFDState) -> dict:
             }]
             return update
     if not any(e.startswith(EMPTY_ADJ_PREFIX) for e in errors):
-        # 형식 오류만 남음 → 기본값 보완 후 수용 (기존 동작)
+        # 형식 오류만 남음 → 기본값 보완 후 수용
         print(f"  [Validator] MAX_JUDGE_ROUNDS 도달 → fallback 보완 적용")
         update["consensus"] = True
         update["messages"] = [{
@@ -2953,7 +2912,7 @@ def judge_validator_node(state: QFDState) -> dict:
         update["messages"] = msgs
         return update
 
-    # 10/13: 끝까지 0건이면 결과에 넣지 않고 중단 (발송 9 #1 원래 동작 복원).
+    # 끝까지 0건이면 결과에 넣지 않고 중단.
     # "조정 없는 Compromise/Selection"은 산출물에 남지 않는다 — run_conflict_resolution이 중단 처리.
     reason = (
         f"Strategy {strategy}, but zero adjusted cells remained after "
@@ -3011,9 +2970,7 @@ def build_judge_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 2: Combined Resolution Runner (Debate + Judge 순차 실행)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 2: Combined Resolution Runner (Debate + Judge 순차 실행) ──────────────
 
 def run_conflict_resolution(
     conflict_group: dict,
@@ -3039,11 +2996,10 @@ def run_conflict_resolution(
         }
     """
     # ── 충돌 그룹에 관련된 CR 리스트 구성 ──
-    # Specific Pro CRs
     pro_crs = hoq_data.get("specific_professional", {}).get("cr_list", [])
     cas_crs = hoq_data.get("specific_casual", {}).get("cr_list", [])
 
-    # 전체 Importance / Direction Matrix 통합 (specific 블록)
+    # Importance / Direction Matrix 통합 (specific 두 블록 + common)
     all_importance = {}
     all_direction = {}
     for block_key in ["specific_professional", "specific_casual", "common"]:
@@ -3123,8 +3079,7 @@ def run_conflict_resolution(
     judge_rounds = judge_result["iteration"]
     strategy = judge_result.get("judge_strategy", "Compromise")
     adjusted = judge_result.get("adjusted_importance", {}) or {}
-    # 발송 9: 라운드 소진 시의 채택은 judge_validator_node가 정상 경로(ID 치환·
-    # 셀 가드)로 수행한다 — 마지막 응답을 그대로 가져오던 예비 경로는 제거.
+    # 라운드 소진 시의 채택은 judge_validator_node가 정상 경로(ID 치환·셀 가드)로 수행한다.
 
     selected_segment = judge_result.get("selected_segment")
 
@@ -3134,7 +3089,6 @@ def run_conflict_resolution(
     elif strategy == "Separation":
         print(f"    Separation → Stage 3가 CR의 세그먼트 소속으로 2모델 분할")
 
-    # 토론 로그 저장
     save_debate_log(
         f"stage2_group{group_index}_advocate_debate.txt",
         debate_result["messages"],
@@ -3150,7 +3104,7 @@ def run_conflict_resolution(
         f"({judge_rounds} rounds, strategy: {strategy})",
     )
 
-    # 10/13: 조정 0건이 끝까지 해소되지 않으면 여기서 중단 (로그는 위에서 저장됨).
+    # 조정 0건이 끝까지 해소되지 않으면 여기서 중단 (로그는 위에서 저장됨).
     # 조정 없는 Compromise/Selection을 결과에 넣지 않는다 — 다시 실행해야 한다.
     if judge_result.get("judge_failed") or (
         strategy in ("Compromise", "Selection")
@@ -3163,13 +3117,11 @@ def run_conflict_resolution(
             f"`uv run python3 main.py --only 2` 로 다시 실행하세요."
         )
 
-    # Judge 토론 로그 수집
     judge_log = [
         m["content"] for m in judge_result["messages"]
         if m["agent"] in ("market_expert_judge", "engineering_expert_judge")
     ]
 
-    # Engineering Expert의 reasoning 추출
     eng_msgs = [
         m for m in judge_result["messages"]
         if m["agent"] == "engineering_expert_judge"
@@ -3194,10 +3146,8 @@ def run_conflict_resolution(
     return result_dict
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: Part Deployment — PC Debate (Phase 2-A)
+# ── Stage 3: Part Deployment — PC Debate (Phase 2-A) ────────────────────────
 # EC → Part Characteristics 도출 토론
-# ═════════════════════════════════════════════════════════════════════════════
 
 MIN_PC_DEBATE_ROUNDS = 2  # PC 토론 최소 라운드
 MIN_PC_ROOF_DEBATE_ROUNDS = 2  # PC Roof 토론 최소 라운드
@@ -3293,7 +3243,7 @@ def _format_skeleton_diff(
 def engineering_expert_pc_node(state: QFDState) -> dict:
     """Engineering Expert: PC 리스트 제안/수정 (도구 호출 가능)
 
-    발송 9 #22: PC마다 담당 EC ID(covers)를 제출받아 빈 행(미커버 EC)을 라운드 안에서
+    PC마다 담당 EC ID(covers)를 제출받아 빈 행(미커버 EC)을 라운드 안에서
     검사한다 — Stage 1 EC 토론의 CR 커버리지 검사와 동형.
     """
     ec_names = [ec["ec"] for ec in state["ec_list"]]
@@ -3428,7 +3378,7 @@ Output JSON:
 
     pc_list = result.get("pc_list", [])
     for pc in pc_list:
-        pc.pop("related_ecs", None)  # 구 필드 (하위 호환)
+        pc.pop("related_ecs", None)  # 스키마 외 필드 제거
         if isinstance(pc.get("pc"), str):   # 표시용 "PC-n: " 접두 제거 (EC 노드와 동형)
             pc["pc"] = re.sub(r"^\s*PC-\d+\s*:\s*", "", pc["pc"]).strip()
     if base_pcs:
@@ -3437,7 +3387,7 @@ Output JSON:
         print(f"    [PC 특화] 골격 유지 {n_common}/{len(base_pcs)} · "
               f"모델 전용 {len(pc_list) - n_common}")
 
-    # 빈 행 검사 (발송 9 #22): covers ID → 정본 EC 이름, 미커버 EC 산출
+    # 빈 행 검사: covers ID → 정본 EC 이름, 미커버 EC 산출
     gaps, n_nocov = _coverage_gaps(pc_list, "covers", ec_ids)
     if n_nocov:
         print(f"    ⚠️  covers 필드 없는 PC {n_nocov}개")
@@ -3579,6 +3529,7 @@ Output JSON:
 
 
 def pc_consensus_check(state: QFDState) -> str:
+    """PC 토론 종료 판정: 합의했거나 최대 라운드에 도달하면 "end"."""
     if state["iteration"] >= settings.MAX_DEBATE_ROUNDS or state.get("consensus", False):
         return "end"
     return "continue"
@@ -3598,9 +3549,7 @@ def build_pc_debate_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: PC Roof Debate (Phase 2-B)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 3: PC Roof Debate (Phase 2-B) ─────────────────────────────────────
 
 def _generate_pc_pairs(pc_list: list[dict]) -> str:
     """PC 리스트에서 모든 고유 쌍 목록을 PC-n ID로 생성 (Stage 1 EC 쌍과 동형)"""
@@ -3824,6 +3773,7 @@ Output JSON:
 
 
 def pc_roof_consensus_check(state: QFDState) -> str:
+    """PC Roof 토론 종료 판정: 합의했거나 최대 라운드에 도달하면 "end"."""
     if state["iteration"] >= settings.MAX_DEBATE_ROUNDS or state.get("consensus", False):
         return "end"
     return "continue"
@@ -3843,9 +3793,7 @@ def build_pc_roof_debate_graph():
     return graph.compile()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: EC-PC Matrix Fill (Phase 2-C)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 3: EC-PC Matrix Fill (Phase 2-C) ──────────────────────────────────
 
 def _validate_pc_relationship(result: dict) -> dict:
     """EC-PC 행렬 값을 {0, 3, 9}로 보정 (Stage 1 _validate_relationship과 동형)"""
@@ -3885,7 +3833,7 @@ def fill_ec_pc_matrix(
     hoq_label: str = "integrated",
 ) -> dict:
     """EC-PC Relationship Matrix — Engineering ↔ Market 토론으로 채움
-    (발송 9 #19: Stage 1 fill_segment_matrix와 동형 — 매뉴얼 3-2-4)
+
 
     각 Chunk (5 ECs)마다 최대 MAX_DEBATE_ROUNDS 라운드:
       Round N:
@@ -3900,7 +3848,7 @@ def fill_ec_pc_matrix(
     pc_names = [pc["pc"] for pc in pc_list]
     pc_ids = _make_id_map(pc_names, "PC")
     pc_name_to_id = {v: k for k, v in pc_ids.items()}
-    # 10/1: PC 토론(3-2-2)의 담당 선언(covers)을 프롬프트에 표시 (10/11: 하한 강제는 제거, 관찰만)
+    # PC 토론의 담당 선언(covers)을 프롬프트에 표시
     ec_name_to_id_all = {ec["ec"]: f"EC-{i}" for i, ec in enumerate(ec_list, 1)}
     declared: dict[str, set[str]] = {}      # EC 이름 → 담당 선언 PC 이름 집합
     for pc in pc_list:
@@ -3915,7 +3863,6 @@ def fill_ec_pc_matrix(
     )
     max_rounds = settings.MAX_DEBATE_ROUNDS
 
-    # EC를 chunk로 분할
     chunks = [
         ec_list[i : i + PC_MATRIX_FILL_CHUNK_SIZE]
         for i in range(0, len(ec_list), PC_MATRIX_FILL_CHUNK_SIZE)
@@ -4043,7 +3990,7 @@ Output JSON:
             eng_proposal = _resolve_matrix_ids(
                 eng_result.get("relationship_matrix", {}), ec_ids, pc_ids, "EC-PC",
             )
-            # 10/11: 담당 선언 쌍의 하한(0→3 강제)은 제거 — 판단은 에이전트의 몫.
+            # 담당 선언 쌍에 하한을 강제하지 않는다 — 판단은 에이전트의 몫.
             # 선언 쌍이 0으로 남은 수만 관찰값으로 기록한다.
             zero_declared = sum(
                 1 for ec_name, row in eng_proposal.items()
@@ -4161,7 +4108,7 @@ Output JSON:
           f"총 {total_debate_rounds} debate rounds, "
           f"청크 승인 {sum(chunk_consensus_log)}/{total_chunks}")
     print(f"  [EC-PC Matrix] EC 라벨 일치: {matched}/{len(ec_list)}")
-    # 10/11: 밀도는 규칙이 아니라 관찰값으로만 기록 (비0 비율, EC당 평균 PC 수)
+    # 밀도는 규칙이 아니라 관찰값으로만 기록 (비0 비율, EC당 평균 PC 수)
     _cells = [v for row in accumulated_rel.values() for v in row.values()]
     _nz = sum(1 for v in _cells if v)
     if _cells:
@@ -4189,9 +4136,7 @@ Output JSON:
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: Target Value Setting (Phase 2-D)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 3: Target Value Setting (Phase 2-E) ───────────────────────────────
 
 def _extract_final_reasoning(messages: list[dict], agent: str) -> str:
     """토론 메시지에서 해당 에이전트의 마지막 reasoning을 추출.
@@ -4277,7 +4222,6 @@ def set_target_values_via_agent(
     ec_text = _format_ecs_ids(ec_list, technical_importance)
     roof_text = json.dumps(pc_roof_matrix, indent=2, ensure_ascii=False)
 
-    # EC-PC 관계 요약
     rel_lines = []
     for ec, pcs in ec_pc_matrix.items():
         nonzero = {pc: v for pc, v in pcs.items() if v > 0}
@@ -4424,16 +4368,14 @@ consistency, and priority alignment. Cite evidence for every adjustment."""
         f"({len(pc_list)} PCs, {rounds_used} rounds, consensus={approved})",
     )
 
-    # 라운드/합의 메타 — 매뉴얼 서술을 산출물로 검증하기 위해 기록
+    # 라운드/합의 메타 기록
     # (하류 value 추출부는 "_meta" 키를 스킵함)
     target_values["_meta"] = {"rounds": rounds_used, "consensus": approved}
     return target_values
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3: Combined Part Deployment Runner
+# ── Stage 3: Combined Part Deployment Runner ────────────────────────────────
 # PC Debate → PC Roof → EC-PC Matrix Fill → Part Importance → Target Value
-# ═════════════════════════════════════════════════════════════════════════════
 
 def run_pc_skeleton_debate(
     ec_list: list[dict],
@@ -4478,7 +4420,7 @@ def run_part_deployment(
 
     Separation이면 base_pc_list(공통 PC 골격)와 model_context(모델 맥락)를 받는다:
     PC 토론은 골격을 출발점으로 한 특화가 되고, Target Value 토론에 모델 맥락이 들어간다.
-    둘 다 None이면(통합 1모델) 기존과 동일하게 동작한다.
+    둘 다 None이면(통합 1모델) 골격·모델 맥락 없이 동작한다.
 
     Returns:
         {
@@ -4563,7 +4505,7 @@ def run_part_deployment(
     )
     ec_pc_matrix = matrix_result["relationship_matrix"]
 
-    # 빈 행 사후 검출 (발송 9 #22): 실제 행렬에서 어떤 PC와도 관계 0인 EC
+    # 빈 행 사후 검출: 실제 행렬에서 어떤 PC와도 관계 0인 EC
     empty_ec_rows = [
         ec["ec"] for ec in ec_list
         if not any(ec_pc_matrix.get(ec["ec"], {}).get(pc["pc"], 0) for pc in pc_list)
@@ -4587,7 +4529,6 @@ def run_part_deployment(
             pi += ti * imp
         part_importance[pc_name] = round(pi, 2)
 
-    # PI 순으로 정렬 출력
     sorted_pi = sorted(part_importance.items(), key=lambda x: x[1], reverse=True)
     for rank, (pc_name, pi) in enumerate(sorted_pi, 1):
         print(f"    {rank}. {pc_name}: {pi:.1f}")
@@ -4640,7 +4581,7 @@ def run_part_deployment(
         "target_values_detailed": target_values_raw,
         "pc_debate_summary": pc_debate_summary,
         "pc_roof_debate_summary": pc_roof_debate_summary,
-        # 발송 9 #22 빈 행 검사 기록 (빈 열 = PI 0 PC 제거는 stage3 drop_zero_importance_pcs)
+        # 빈 행 검사 기록 (빈 열 = PI 0 PC 제거는 stage3 drop_zero_importance_pcs)
         "coverage": {
             "pc_debate_uncovered_ecs": pc_coverage_gaps,
             "empty_ec_rows": empty_ec_rows,
@@ -4650,9 +4591,7 @@ def run_part_deployment(
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage 3 Phase 3: PC Specification (부품 특성 사양서)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage 3 Phase 3: PC Specification (부품 특성 사양서) ───────────────────────────
 
 def generate_pc_specification(
     deployment: dict,
@@ -4665,7 +4604,7 @@ def generate_pc_specification(
     Args:
         deployment: run_part_deployment() 반환값
         strategy: "Compromise" | "Selection" | "Separation"
-        conflict_summaries: [{group_cr_a, group_cr_b, strategy, reasoning, debate_summary}, ...]
+        conflict_summaries: [{group_cr_a, group_cr_b, group_cr_common, strategy, reasoning, debate_summary}, ...]
         hoq_label: Integrated HoQ 라벨
 
     Returns:
@@ -4711,7 +4650,7 @@ def generate_pc_specification(
                     f"    Trade-off notes: {detail['trade_off_notes']}"
                 )
 
-    # 10/10 (4-1′): 그룹별 CR을 Judge·토론 원문과 같은 순서(cr_a → cr_b → common)의
+    # 그룹별 CR을 Judge·토론 원문과 같은 순서(cr_a → cr_b → common)의
     # 그룹 접두 번호(G1 CR-3)로 제시 — 원문의 그룹 안 번호를 독자가 식별할 수 있게 한다.
     conflict_context_lines = []
     for gi, cs in enumerate(conflict_summaries, 1):
@@ -4745,7 +4684,7 @@ def generate_pc_specification(
            if pc_roof_debate_summary else "")
     )
 
-    # 입력 크기 실측용 — 상한·절단은 두지 않는다 (재실행 실측 후 판단)
+    # 입력 크기 로그 — 상한·절단은 두지 않는다
     print(f"  [PC Spec] user prompt 총 {len(user_prompt):,}자")
     print(f"  [PC Spec] LLM 호출 — {len(pc_list)} PCs에 대한 설정 근거 생성")
     result = _llm_json(PC_SPEC_SYSTEM, user_prompt)

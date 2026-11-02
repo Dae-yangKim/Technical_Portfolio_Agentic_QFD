@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class HoQ(BaseModel):
     # Relationship Matrix: 방향(부호) × 중요도 크기
     # 음수 = EC가 CR을 저하, 양수 = EC가 CR을 충족
+    """세그먼트별 HoQ — CR-EC 관계 행렬과 파생 행렬(Importance · Direction), Roof, 기술적 중요도."""
     relationship_matrix: dict[str, dict[str, int]]  # {cr: {ec: -9|-3|0|3|9}}
 
     # Importance Matrix: 크기만 (relationship_matrix에서 부호 제거)

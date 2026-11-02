@@ -88,12 +88,14 @@ def rel_style(v: int) -> tuple[str, str, str]:
 
 
 def imp_style(v: int) -> tuple[str, str, str]:
+    """Importance 값(0/3/9)에 따른 셀 배경색 · 글자색 · 표시 문자열."""
     if v == 0:
         return "", *C["blank"]
     return str(v), *C["p9" if v == 9 else "p3"]
 
 
 def roof_style(v) -> tuple[str, str, str]:
+    """Roof 상관값(±0.5/±0.9)에 따른 셀 배경색 · 글자색 · 표시 문자열."""
     if v is None or v == 0:
         return "", *C["blank"]
     key = {0.9: "r9", 0.5: "r5", -0.5: "m5", -0.9: "m9"}[round(float(v), 1)]
@@ -115,6 +117,7 @@ def draw_table(
     label_font: float = FONT,
     footnote: str = "",
 ) -> None:
+    """텍스트 열 + 행렬 셀을 표 형태로 그려 PNG로 저장한다. 셀 크기는 고정, 그림 크기는 행·열 수와 라벨 길이로 계산."""
     n_rows, n_cols = len(cells), len(col_labels)
     widths = col_widths or [CELL] * n_cols
     text_w = sum(w for _, _, w, _ in text_cols)
@@ -217,6 +220,7 @@ class Data:
 # ── 그림 ──────────────────────────────────────────────────────────────────────────
 
 def fig_seg_hoq(d: Data, out: str, dpi: int) -> None:
+    """CR 종류별(공통 · 세그먼트별) HoQ 관계 행렬을 종류마다 한 장씩 그린다."""
     for seg in SEGMENTS:
         block = d.hoq[seg]
         crs = [{**c, "seg": SEG_LABEL[seg]} for c in block["cr_list"]]
@@ -228,6 +232,7 @@ def fig_seg_hoq(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_initial_hoq(d: Data, out: str, dpi: int) -> None:
+    """세 CR 블록을 행 방향으로 쌓은 Initial HoQ(조정 전 관계 행렬)를 그린다."""
     rm = {}
     for seg in SEGMENTS:
         rm.update(d.hoq[seg]["relationship_matrix"])
@@ -237,12 +242,14 @@ def fig_initial_hoq(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_importance(d: Data, out: str, dpi: int) -> None:
+    """Importance Matrix(0/3/9)를 그린다."""
     cells = [[imp_style(d.initial_importance[c["cr"]].get(ec, 0)) for ec in d.ecs] for c in d.crs]
     draw_table(f"Importance Matrix — {len(d.crs)} CR × {len(d.ecs)} EC (0 / 3 / 9)",
                d.cr_text_cols(d.crs), d.ec_labels(), cells, os.path.join(out, "importance_matrix.png"), dpi)
 
 
 def fig_direction(d: Data, out: str, dpi: int) -> None:
+    """Direction Matrix(↑/↓)를 그린다."""
     dm = {}
     for seg in SEGMENTS:
         dm.update(d.hoq[seg]["direction_matrix"])
@@ -256,6 +263,7 @@ def fig_direction(d: Data, out: str, dpi: int) -> None:
 
 
 def _roof_cells(items: list[str], roof: dict, id_of: dict) -> list[list[tuple[str, str, str]]]:
+    """항목 쌍의 상관값을 상삼각 셀 목록으로 변환한다 (대각선 아래는 빈 셀)."""
     cells = []
     for a in items:
         row = []
@@ -270,6 +278,7 @@ def _roof_cells(items: list[str], roof: dict, id_of: dict) -> list[list[tuple[st
 
 
 def fig_roof(d: Data, out: str, dpi: int) -> None:
+    """EC 간 상관(Roof) 행렬을 그린다."""
     cells = _roof_cells(d.ecs, d.hoq["roof_matrix"], d.ec_id)
     text_cols = [("EC", [d.ec_id[e] for e in d.ecs], 0.65, "center"),
                  ("Engineering Characteristic", [shorten(e, 70) for e in d.ecs], 5.0, "left")]
@@ -279,6 +288,7 @@ def fig_roof(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_conflict(d: Data, out: str, dpi: int) -> None:
+    """CR × CR 충돌 행렬을 그린다. 충돌 셀에는 근거 EC, 같은 종류 쌍은 × 표시."""
     cm = d.conflict["conflict_matrix"]
     nxn = cm["nxn_matrix"]
     crs = d.crs
@@ -308,6 +318,7 @@ def fig_conflict(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_integrated_hoq(d: Data, out: str, dpi: int) -> None:
+    """조정 반영 Integrated HoQ를 모델별로 그린다. Judge가 바꾼 셀은 굵은 테두리와 "전→후"로 강조."""
     for model in d.integrated["integrated_hoqs"]:
         crs = []
         for c in model["cr_list"]:
@@ -337,6 +348,7 @@ def fig_integrated_hoq(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_ec_pc(d: Data, out: str, dpi: int) -> None:
+    """EC × PC 관계 행렬을 모델별로 그린다."""
     for dep in d.part["deployments"]:
         pcs = [p["pc"] for p in dep["pc_list"]]
         pc_id = {pc: f"PC-{i}" for i, pc in enumerate(pcs, 1)}
@@ -352,6 +364,7 @@ def fig_ec_pc(d: Data, out: str, dpi: int) -> None:
 
 
 def fig_pc_roof(d: Data, out: str, dpi: int) -> None:
+    """PC 간 상관(PC Roof) 행렬을 모델별로 그린다."""
     for dep in d.part["deployments"]:
         pcs = [p["pc"] for p in dep["pc_list"]]
         pc_id = {pc: f"PC-{i}" for i, pc in enumerate(pcs, 1)}
@@ -372,6 +385,7 @@ FIGURES = {
 
 
 def main() -> None:
+    """CLI 옵션을 읽어 입력 json 4개를 로드하고 지정한 그림을 생성한다."""
     p = argparse.ArgumentParser(description="QFD 산출물 시각화 (hoq / conflict_log / integrated_hoq / part_deployment → PNG)")
     p.add_argument("--input", default="sample_input", help="json 4개가 있는 폴더 (기본 sample_input)")
     p.add_argument("--out", default="figures", help="PNG 저장 폴더 (기본 figures)")

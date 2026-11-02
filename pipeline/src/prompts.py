@@ -61,6 +61,7 @@ Signals for **Casual**:
 # ── Stage 0: Segment-Level CR Extraction ──────────────────────────────────────
 
 def build_segment_cr_extraction_system(purpose: str, max_crs: int, min_support: int) -> str:
+    """세그먼트별 CR 추출 시스템 프롬프트를 만든다 (세그먼트 이름 · CR 상한 · 최소 근거 리뷰 수 삽입)."""
     return f"""
 ### Role: Senior QFD Analyst for the "{purpose}" User Segment
 
@@ -164,7 +165,7 @@ and need direction. Combine their evidence_review_indices lists.
 
 
 # ── Stage 0: VoC 표시용 변환 ──────────────────────────────────────────────────
-# 파이프라인 내부 CR 텍스트(키)는 불변 — 산출물·매뉴얼 표시용 voc 필드만 생성
+# 파이프라인 내부 CR 텍스트(키)는 불변 — 산출물 표시용 voc 필드만 생성
 
 VOC_TRANSLATION_SYSTEM = """
 ### Role: Customer Voice Writer
@@ -498,8 +499,7 @@ The sign indicates PHYSICAL co-movement of numerical values:
 # CR-EC 관계 판정은 Engineering(판정) / Market(검토) 두 역할이, 각각
 # reasoning → json 2단계로 수행한다. 네 조합 모두가 공유하는 규칙은
 # MATRIX_FILL_RULES 한 곳에만 두고, 역할별 차이만 아래 빌더에서 덧붙인다.
-# (규칙을 고칠 때 여러 프롬프트에 중복 기입하다 블록마다 기준이 달라지는
-#  문제를 막기 위한 구조)
+# (규칙을 한 곳에서만 관리하기 위한 구조)
 
 MATRIX_FILL_RULES = """
 ### Scale & Sign (allowed values ONLY: -9, -3, 0, 3, 9)
@@ -1245,7 +1245,7 @@ You have access to search tools (Tavily, Google, ChromaDB reviews).
 # Separation일 때만 쓰인다. 분할 전 전체 HoQ로 정한 공통 PC 골격을 출발점으로,
 # 모델 맥락(전용 CR · Separation 토론 합의점)에 근거한 추가·제외만 허용한다.
 # 골격 PC는 "S-n" ID로 유지를 표시 → 코드가 골격 이름 그대로 복원해 형제 모델과 비교 가능하게 한다.
-# 하나의 블록을 Engineering(모든 라운드)과 Market 검토에 똑같이 덧붙인다 (기존 PC 프롬프트 본문은 그대로).
+# 하나의 블록을 Engineering(모든 라운드)과 Market 검토에 똑같이 덧붙인다.
 
 PC_SPECIALIZATION_BLOCK = """
 ### Product-family specialization (Separation) — this model only:

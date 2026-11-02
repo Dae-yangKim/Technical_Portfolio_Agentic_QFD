@@ -7,7 +7,7 @@ SERVICE_TIER = "auto"
 SEGMENT_A = "Professional"
 SEGMENT_B = "Casual"
 
-MAX_DEBATE_ROUNDS = 3  # 이후에 변경 가능성 있음 (실험을 진행)
+MAX_DEBATE_ROUNDS = 3  # 토론 최대 라운드 (EC·Roof·Matrix Fill·Advocate·PC·Target Value 토론 공통)
 
 RAW_DATA_PATH     = "data/raw/reddit_reviews.xlsx"
 INTERMEDIATE_PATH = "data/intermediate"

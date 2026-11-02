@@ -1,13 +1,13 @@
-# Stage 3: Output Synthesis + Part Deployment + PC Specification
-#
-# Phase 1 (3-2-3): Integrated HoQ 생성 + Technical Importance 산출
-# Phase 2 (3-2-4): PC 도출 → EC-PC Matrix → PC Roof → Part Importance → Target Value
-#   Separation이면: 분할 전 전체 HoQ로 공통 PC 골격 1회 → 모델별로 골격 특화(모델 맥락 근거의 추가·제외)
-#   → Target Value에 모델 맥락 주입
-# Phase 3 (3-2-5): PC Specification (부품 특성 사양서) — LLM 기반 설정 근거 생성
-#
-# Input:  data/intermediate/hoq.json, data/intermediate/conflict_log.json
-# Output: data/output/integrated_hoq.json, data/output/part_deployment.json, data/output/pc_specification.xlsx
+"""Stage 3: 조정 결과를 반영한 Integrated HoQ에서 부품 특성(PC)과 사양서를 도출한다.
+
+입력: data/intermediate/hoq.json, data/intermediate/conflict_log.json
+출력: data/output/integrated_hoq.json, data/output/part_deployment.json, data/output/pc_specification.xlsx
+
+Phase 1: Integrated HoQ 생성 + 기술적 중요도(TI) 산출
+Phase 2: PC 도출 → EC-PC 관계 행렬 → PC Roof → 부품 중요도(PI) → 목표값
+         Separation이면 분할 전 HoQ로 공통 PC 골격을 먼저 정한 뒤 모델별로 특화하고, 목표값에 모델 맥락을 반영
+Phase 3: PC 사양서 작성 (값 · 설정 근거)
+"""
 import json, os, re
 
 import pandas as pd
@@ -29,9 +29,7 @@ from src.agents.debate import (
 )
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 1: Output Synthesis — Integrated HoQ + Technical Importance
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 1: Output Synthesis — Integrated HoQ + Technical Importance ───────
 
 def load_inputs() -> tuple[dict, dict]:
     """hoq.json + conflict_log.json 로드"""
@@ -97,13 +95,11 @@ def _build_full_importance_matrix(
     """Common + Independent (원본) + Conflict (adjusted) 통합 Importance Matrix"""
     full: dict[str, dict[str, int]] = {}
 
-    # 원본 importance 전체 수집
     for block_key in ["common", "specific_professional", "specific_casual"]:
         block = hoq.get(block_key, {})
         for cr, ecs in block.get("importance_matrix", {}).items():
             full[cr] = dict(ecs)
 
-    # Adjusted importance 덮어쓰기 (conflict CRs)
     adjusted = conflict_log.get("adjusted_importance_matrix", {})
     for cr, ecs in adjusted.items():
         full[cr] = dict(ecs)
@@ -229,7 +225,6 @@ def build_integrated_hoqs(
         integrated_hoqs=integrated_hoqs,
     )
 
-    # 출력
     print(f"\n[Phase 1] Output Synthesis 완료")
     print(f"  Strategy: {strategy}")
     print(f"  Integrated HoQ 수: {len(integrated_hoqs)}")
@@ -303,9 +298,7 @@ def save_part_deployment(deployment: PartDeployment) -> str:
     return path
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 3: PC Specification (부품 특성 사양서)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 3: PC Specification (부품 특성 사양서) ───────────────────────────────────
 
 def build_pc_specifications(
     deployments: list[PartDeploymentResult],
@@ -436,9 +429,7 @@ def save_pc_specification(specifications: list[PCSpecification]) -> str:
     return path
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Part Deployment 후처리
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Part Deployment 후처리 ─────────────────────────────────────────────────────
 
 def drop_zero_importance_pcs(raw: dict, hoq_label: str) -> dict:
     """Part Importance = 0 인 PC를 산출물에서 제거
@@ -488,9 +479,7 @@ def drop_zero_importance_pcs(raw: dict, hoq_label: str) -> dict:
     return raw
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# 전체 파이프라인
-# ═════════════════════════════════════════════════════════════════════════════
+# ── 전체 파이프라인 ────────────────────────────────────────────────────────────────
 
 def run() -> None:
     """Stage 3 전체 파이프라인"""
@@ -498,12 +487,10 @@ def run() -> None:
     print("  Stage 3: Output Synthesis + Part Deployment + PC Specification")
     print("=" * 60)
 
-    # Phase 1: Output Synthesis
     hoq, conflict_log = load_inputs()
     output_synthesis = build_integrated_hoqs(hoq, conflict_log)
     hoq_path = save_integrated_hoq(output_synthesis)
 
-    # Phase 2: Part Deployment
     deployment_raw_results: list[dict] = []
     deployments: list[PartDeploymentResult] = []
 
@@ -553,7 +540,6 @@ def run() -> None:
     )
     deploy_path = save_part_deployment(full_deployment)
 
-    # Phase 3: PC Specification
     specifications = build_pc_specifications(
         deployments=deployments,
         deployment_raw_results=deployment_raw_results,
@@ -562,7 +548,6 @@ def run() -> None:
     )
     spec_path = save_pc_specification(specifications)
 
-    # 요약
     print(f"\n{'='*60}")
     print("  Stage 3 완료 요약")
     print("=" * 60)

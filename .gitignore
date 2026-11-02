@@ -10,7 +10,7 @@ __pycache__/
 # 수집 데이터 (Reddit 리뷰는 재배포하지 않음)
 collection/*.xlsx
 
-# 파이프라인 실행 산출물 (examples/ 의 Case 산출물은 추적함)
+# 파이프라인 실행 산출물 (실행 시 생성)
 pipeline/data/raw/*
 pipeline/data/intermediate/*
 pipeline/data/output/*

@@ -32,9 +32,7 @@ from rich.live import Live
 console = Console()
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage Metadata
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage Metadata ──────────────────────────────────────────────────────────
 
 STAGES = {
     0: {
@@ -64,9 +62,7 @@ STAGES = {
 }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Utilities
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Utilities ───────────────────────────────────────────────────────────────
 
 def _elapsed_str(secs: float) -> str:
     """경과 시간을 M분 S초 형식으로 반환"""
@@ -89,17 +85,17 @@ def _file_status(path: str) -> str:
     return "✅" if os.path.exists(path) else "⬜"
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Stage Runners
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Stage Runners ───────────────────────────────────────────────────────────
 
 def run_stage_0() -> None:
+    """입력 파일을 확인하고 Stage 0(CR 추출)을 실행한다."""
     _check_file(settings.RAW_DATA_PATH, "Raw data")
     from src.stage0_cr_extraction import run
     run()
 
 
 def run_stage_1() -> None:
+    """Stage 0 산출물을 확인하고 Stage 1(HoQ 구축)을 실행한다."""
     _check_file(
         f"{settings.INTERMEDIATE_PATH}/final_cr_output.xlsx",
         "Stage 0 output (final_cr_output.xlsx)",
@@ -109,6 +105,7 @@ def run_stage_1() -> None:
 
 
 def run_stage_2() -> None:
+    """Stage 1 산출물을 확인하고 Stage 2(충돌 해결)를 실행한다."""
     _check_file(
         f"{settings.INTERMEDIATE_PATH}/hoq.json",
         "Stage 1 output (hoq.json)",
@@ -118,6 +115,7 @@ def run_stage_2() -> None:
 
 
 def run_stage_3() -> None:
+    """Stage 1·2 산출물을 확인하고 Stage 3(부품 전개·사양서)을 실행한다."""
     _check_file(
         f"{settings.INTERMEDIATE_PATH}/hoq.json",
         "Stage 1 output (hoq.json)",
@@ -138,9 +136,7 @@ STAGE_RUNNERS = {
 }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Pipeline Orchestrator
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Pipeline Orchestrator ───────────────────────────────────────────────────
 
 def _print_header(stage_from: int, stage_to: int) -> None:
     """파이프라인 시작 헤더 출력"""
@@ -156,7 +152,6 @@ def _print_header(stage_from: int, stage_to: int) -> None:
     info_table.add_row("📁 Intermediate", settings.INTERMEDIATE_PATH)
     info_table.add_row("📁 Output",       settings.OUTPUT_PATH)
 
-    # 실행 대상 Stage 표시
     stage_items = []
     for sn in range(stage_from, stage_to + 1):
         meta = STAGES[sn]
@@ -189,7 +184,6 @@ def _print_summary(
     console.print(Rule("🎉 PIPELINE COMPLETE", style="bold green"))
     console.print()
 
-    # Stage별 소요 시간 테이블
     time_table = Table(
         title="⏱️  Stage별 소요 시간",
         show_header=True,
@@ -214,7 +208,6 @@ def _print_summary(
     console.print(time_table)
     console.print(f"\n  ⏱️  총 소요 시간: [bold]{_elapsed_str(pipeline_elapsed)}[/]")
 
-    # Output 파일 상태
     console.print()
     file_table = Table(
         title="📦 Output Files",
@@ -241,7 +234,6 @@ def _print_summary(
 
     console.print(file_table)
 
-    # 로그 파일
     log_dir = f"{settings.INTERMEDIATE_PATH}/logs"
     if os.path.exists(log_dir):
         log_files = sorted(f for f in os.listdir(log_dir) if f.endswith(".txt"))
@@ -330,11 +322,10 @@ def run_pipeline(stage_from: int = 0, stage_to: int = 3) -> None:
     _print_summary(stage_times, pipeline_elapsed)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# CLI Entry Point
-# ═════════════════════════════════════════════════════════════════════════════
+# ── CLI Entry Point ─────────────────────────────────────────────────────────
 
 def main() -> None:
+    """CLI 옵션(--from / --to / --only)을 해석해 지정 범위의 Stage를 순차 실행한다."""
     parser = argparse.ArgumentParser(
         description="🤖 Agentic QFD Framework — Full Pipeline Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,

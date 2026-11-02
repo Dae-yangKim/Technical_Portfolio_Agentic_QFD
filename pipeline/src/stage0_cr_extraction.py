@@ -1,16 +1,15 @@
-# Stage 0: Reddit → Purpose Tagging → Segment-Level CR Extraction → Final Processing
-#
-# Input:  data/raw/reddit_reviews.xlsx
-# Output: data/intermediate/tagged_reviews.xlsx
-#         data/intermediate/phase2_cr_extraction.xlsx
-#         data/intermediate/final_cr_output.xlsx
-#         ChromaDB: data/chroma/chroma_db_review_{purpose}/
-#                   data/chroma/chroma_db_cr_{purpose}/
-#
-# Phase 1: Tagging               (LangGraph — TaggingState)
-# Phase 2: Segment-Level CR Extraction (single LLM call per segment)
-# Phase 3: Final Processing       (LangGraph — FinalProcessingState)
-#   Priority → ChromaDB → CandidateSearch → LLMClassify
+"""Stage 0: 리뷰를 사용 목적별로 태깅하고 CR을 추출해 최종 CR 목록을 만든다.
+
+입력: data/raw/reddit_reviews.xlsx
+출력: data/intermediate/tagged_reviews.xlsx       (Phase 1 태깅 결과)
+      data/intermediate/phase2_cr_extraction.xlsx (Phase 2 세그먼트별 CR 후보)
+      data/intermediate/final_cr_output.xlsx      (최종 CR 목록 · Priority · 근거 리뷰 · VoC)
+      data/chroma/chroma_db_review_{purpose}/, data/chroma/chroma_db_cr_{purpose}/  (임베딩 DB)
+
+Phase 1: 리뷰 유효성 · 사용 목적 태깅 (LangGraph, 병렬)
+Phase 2: 세그먼트별 CR 추출 (리뷰 묶음 단위 LLM 호출 → 묶음 병합 → 상한 적용)
+Phase 3: Priority 산정 → 임베딩 저장 → 공통 CR 후보 탐색 → LLM 판정 → 중복 통합
+"""
 import os, json
 import pandas as pd
 import numpy as np
@@ -66,11 +65,10 @@ cr_collections = {
     for purpose in PURPOSES
 }
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 1: Tagging
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 1: Tagging ────────────────────────────────────────────────────────
 
 class TaggingState(TypedDict):
+    """Phase 1 태깅 그래프의 상태 — 리뷰 원문과 LLM 판정 결과."""
     raw_review:       str
     is_valid:         bool
     product_type:     str
@@ -81,6 +79,7 @@ class TaggingState(TypedDict):
 
 
 def tagging_node(state: TaggingState) -> dict:
+    """리뷰 한 건의 유효성 · 제품 유형 · 사용 목적을 LLM으로 판정한다. 실패하면 무효 리뷰로 처리."""
     try:
         response = llm.invoke([
             SystemMessage(content=prompts.TAGGING_SYSTEM),
@@ -158,9 +157,7 @@ def run_phase1(raw_data: pd.DataFrame) -> pd.DataFrame:
     return tagging_df
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 2: Segment-Level CR Extraction
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 2: Segment-Level CR Extraction ────────────────────────────────────
 
 
 def _single_extraction(purpose: str, indexed_reviews: str) -> list[dict]:
@@ -201,8 +198,8 @@ def _format_indexed_reviews(reviews: list[str], offset: int = 0) -> str:
 def _dedup_evidence_indices(crs: list[dict]) -> int:
     """각 CR의 evidence_review_indices 중복 제거 (순서 유지, 제자리 수정).
 
-    발송 9 #12: 묶음 병합 프롬프트는 합집합을 요구하지만 LLM이 중복을 남기고,
-    그 개수가 최소 지지·상위 N 컷·분위수 Priority·쿼터 정렬에 그대로 쓰였다.
+    묶음 병합 프롬프트는 합집합을 요구하지만 LLM이 중복을 남기고,
+    그 개수가 최소 지지 필터·상위 N 컷·분위수 Priority에 그대로 쓰이므로 여기서 제거한다.
     Returns: 제거된 중복 개수"""
     removed = 0
     for cr in crs:
@@ -297,12 +294,11 @@ def run_phase2(tagging_df: pd.DataFrame) -> tuple[dict, dict]:
     return cr_results, segment_reviews
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 3: Final Processing
-#   Priority → ChromaDB Populate → CandidateSearch → LLMClassify
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 3: Final Processing ───────────────────────────────────────────────
+# Priority → ChromaDB Populate → CandidateSearch → LLMClassify → CRDedup
 
 class FinalProcessingState(TypedDict):
+    """Phase 3 그래프의 상태 — 세그먼트별 CR, 리뷰, 유사도 행렬, 분류 결과."""
     pro_crs:            List[dict]
     cas_crs:            List[dict]
     reviews_pro:        List[str]
@@ -676,7 +672,7 @@ phase3_app = _phase3_workflow.compile()
 
 
 def run_phase3(cr_results: dict, segment_reviews: dict) -> dict:
-    """Phase 3: Priority → ChromaDB → Classification → final result dict 반환"""
+    """Phase 3: Priority → ChromaDB → Classification → Dedup → final result dict 반환"""
     pro_crs = cr_results.get(settings.SEGMENT_A, [])
     cas_crs = cr_results.get(settings.SEGMENT_B, [])
 
@@ -705,9 +701,7 @@ def run_phase3(cr_results: dict, segment_reviews: dict) -> dict:
     }
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Entry point
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Entry point ─────────────────────────────────────────────────────────────
 
 def _normalize_specific_crs(crs: list[dict]) -> list[dict]:
     """Phase 2/3 내부 키 'label' → Stage 1 호환 키 'requirement' 변환"""
@@ -726,8 +720,7 @@ def _normalize_specific_crs(crs: list[dict]) -> list[dict]:
 def _voc_summary(cr: dict) -> tuple[int, str]:
     """(근거 리뷰 수, 미리보기 발췌) 반환
 
-    미리보기는 열람 편의용이며 방법론적 '대표 리뷰'가 아니다. 인용은
-    VoC_Evidence 시트의 전체 목록에서 선택한다.
+    미리보기는 열람 편의용 발췌이며, 전체 근거 목록은 VoC_Evidence 시트에 있다.
     """
     texts = [t for seg in cr.get("voc_evidence", {}).values() for t in seg]
     if not texts:
@@ -762,8 +755,7 @@ def _build_voc_evidence_df(result: dict) -> pd.DataFrame:
 def translate_crs_to_voc(result: dict) -> None:
     """확정된 CR 전체에 표시용 VoC 문장(voc 필드)을 병기.
 
-    파이프라인 내부 CR 텍스트(키)는 절대 불변 — 산출물·매뉴얼·대시보드
-    표시용 필드만 추가한다. 변환 누락 시 원문으로 대체(빈 값 금지)."""
+    파이프라인 내부 CR 텍스트(키)는 불변 — 산출물 표시용 필드만 추가한다. 변환 누락 시 원문으로 대체(빈 값 금지)."""
     entries: list[tuple[dict, str]] = []
     for key, label_key in [
         ("common", "canonical_label"),
@@ -826,12 +818,12 @@ def _to_sheet_df(crs: list[dict], label_key: str) -> pd.DataFrame:
 
 
 def run() -> None:
+    """Stage 0 전체 실행: 태깅(재사용 가능) → 세그먼트별 CR 추출 → 최종 처리 → 저장."""
     os.makedirs(settings.INTERMEDIATE_PATH, exist_ok=True)
     os.makedirs(settings.CHROMA_BASE_PATH,  exist_ok=True)
 
     # ── Phase 1 ──
-    # 태깅은 CR 개수 설정과 무관하므로, 기존 결과가 있으면 재사용해 입력을 고정한다.
-    # (재실행 간 비교 시 태깅 결과 변동이 교란 변수가 되는 것을 막는 목적)
+    # REUSE_TAGGED_REVIEWS: tagged_reviews.xlsx가 있으면 Phase 1을 건너뛰고 재사용
     tagged_path = f"{settings.INTERMEDIATE_PATH}/tagged_reviews.xlsx"
 
     if settings.REUSE_TAGGED_REVIEWS and os.path.exists(tagged_path):
@@ -883,7 +875,6 @@ def run() -> None:
             voc_df.to_excel(writer, sheet_name="VoC_Evidence", index=False)
     print(f"저장 완료: {output_path}")
 
-    # 요약
     print("\n" + "=" * 50)
     print("  최종 CR 요약")
     print("=" * 50)

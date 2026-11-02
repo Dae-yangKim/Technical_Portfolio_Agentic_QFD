@@ -24,6 +24,7 @@ class OutputSynthesis(BaseModel):
 # ── Stage 3 Phase 2: Part Deployment ─────────────────────────────────────────
 
 class PartCharacteristic(BaseModel):
+    """부품 특성(PC) 한 건."""
     pc: str
     unit: str
 
@@ -38,7 +39,7 @@ class PartDeploymentResult(BaseModel):
     target_values: dict[str, str]  # {pc: target_value string}
     # {pc: {value, justification, trade_off_notes}} + "_meta"(라운드/합의 기록)
     target_values_detailed: dict[str, dict] = {}
-    # 발송 9 #22 빈 행 검사 기록: pc_debate_uncovered_ecs / empty_ec_rows / dropped_zero_pi_pcs
+    # 빈 행 검사 기록: pc_debate_uncovered_ecs / empty_ec_rows / ec_pc_fill_meta
     coverage: dict = {}
 
 

@@ -1,14 +1,15 @@
-# Stage 2: N×N Conflict Matrix 생성 → CR Classification → Agent-based Debate → Judge
-#
-# Input:  data/intermediate/hoq.json
-# Output: data/intermediate/conflict_log.json
-#
-# Phase 1: hoq.json 로드 → Importance Matrix / Direction Matrix 확보
-# Phase 2: Direction Matrix + Roof Matrix → N×N Conflict Matrix 구축
-# Phase 3: CR Classification — EC 기준 충돌 그룹 (Conflict groups / Independent CRs)
-# Phase 4: Conflict CR pairs → Agent-based Debate (그룹별)
-# Phase 5: Judge Phase (Market Expert ↔ Engineering Expert) → Strategy + Importance 조정
-# Phase 6: 결과 저장
+"""Stage 2: 세그먼트 간 충돌 CR을 찾아 에이전트 토론과 Judge 판정으로 해결한다.
+
+입력: data/intermediate/hoq.json
+출력: data/intermediate/conflict_log.json
+
+Phase 1: hoq.json 로드 (Importance · Direction · Roof)
+Phase 2: Direction + Roof → N×N 충돌 행렬 (직접 · 간접 충돌)
+Phase 3: EC 기준으로 충돌 셀을 그룹화
+Phase 4: 그룹별 세그먼트 Advocate 토론 (Orchestrator 진행)
+Phase 5: Judge (Market ↔ Engineering) → 전략 결정 + Importance 조정
+Phase 6: 조정 반영 Importance 행렬 생성 + 저장
+"""
 import json, os
 from collections import defaultdict
 
@@ -17,9 +18,7 @@ from src.schemas.conflict import ConflictCell, ConflictGroup, ResolutionLog
 from src.agents.debate import run_conflict_resolution
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 1: hoq.json 로드
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 1: hoq.json 로드 ────────────────────────────────────────────────────
 
 def load_hoq() -> dict:
     """Stage 1 결과 (hoq.json) 로드"""
@@ -46,9 +45,7 @@ def load_hoq() -> dict:
     return hoq
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 2: N×N Conflict Matrix 구축
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 2: N×N Conflict Matrix 구축 ─────────────────────────────────────────
 
 def build_conflict_matrix(
     hoq: dict,
@@ -119,7 +116,7 @@ def build_conflict_matrix(
         # d_a_k × sign(cor) 방향으로 움직인다. 그 유발 방향이 CR_B의 소원과
         # 반대이면 간접 충돌: d_a_k × d_b_l × sign(cor) < 0.
         # (직접 충돌 d_a × d_b < 0 은 이 식의 k=l, cor=+1 특수 경우)
-        # 강도 문턱은 |cor| > |τ_R| — 기존 strict 기준(0.9만 인정) 유지.
+        # 강도 문턱은 |cor| > |τ_R| (±0.9 강상관만 간접 충돌 후보)
         tau_mag = abs(settings.ROOF_THRESHOLD)
         for cr_a, dirs_a in dir_g.items():
             for cr_b, dirs_b in dir_h.items():
@@ -202,9 +199,7 @@ def build_conflict_matrix(
     return unique_cells, all_crs, nxn_matrix
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 3: CR Classification — EC 기준 그룹화 (10/10, 문서 2-1-3)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 3: CR Classification — EC 기준 그룹화 ────────────────
 
 def _group_cells_by_ec(
     cells: list[ConflictCell],
@@ -213,7 +208,7 @@ def _group_cells_by_ec(
     pro_set: set[str],
     ec_order: list[str],
 ) -> tuple[list[ConflictGroup], list[str], dict]:
-    """EC 기준 충돌 그룹 생성 (10/10 — 문서 2-1-3 규칙 교체)
+    """EC 기준 충돌 그룹 생성
 
     1. 충돌 셀을 "무엇을 두고 다투는가"(EC)로 모은다.
        direct 셀은 그 EC 하나, roof 셀은 ec_a·ec_b 두 EC에 속한다.
@@ -221,10 +216,7 @@ def _group_cells_by_ec(
        (a) 같은 CR 쌍이 두 EC에서 모두 다툰다.
        (b) 한 roof 셀이 두 EC를 잇는다 (간접 충돌).
     3. 그룹의 CR 명단은 그 그룹 셀에 등장하는 CR 전부(세그먼트별로 나눠 기록).
-       셀 1개짜리 그룹도 합치지 않고 그대로 둔다 (사용자 결정 10/10).
-
-    이전 방식(연결요소 → 모듈러리티로 CR 분할 → 경계 셀을 판돈 규칙으로 배속)은
-    CR이 두 그룹에 겹치고 같은 CR 쌍의 충돌이 쪼개지는 부작용이 있어 교체했다.
+       셀 1개짜리 그룹도 합치지 않고 그대로 둔다.
 
     Returns:
         (conflict_groups, independent_crs, grouping_meta)
@@ -352,9 +344,7 @@ def classify_crs(
     return groups, independent_crs, meta
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 4 + 5: Agent-based Debate + Judge (그룹별 실행)
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 4 + 5: Agent-based Debate + Judge (그룹별 실행) ────────────────────────
 
 def resolve_conflicts(
     groups: list[ConflictGroup],
@@ -385,7 +375,6 @@ def resolve_conflicts(
         print(f"{'='*60}")
 
         group_dict = group.model_dump()
-        # cells 내부의 ConflictCell도 dict로 변환
         group_dict["cells"] = [c.model_dump() for c in group.cells]
 
         result = run_conflict_resolution(
@@ -422,9 +411,7 @@ def resolve_conflicts(
     return resolution_logs
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# Phase 6: 결과 저장
-# ═════════════════════════════════════════════════════════════════════════════
+# ── Phase 6: 결과 저장 ──────────────────────────────────────────────────────────
 
 def build_adjusted_importance_matrix(
     hoq: dict,
@@ -432,13 +419,12 @@ def build_adjusted_importance_matrix(
 ) -> tuple[dict[str, dict[str, int]], list[dict]]:
     """원본 Importance Matrix에 Judge 조정값을 반영한 최종 행렬 생성
 
-    10/10: 두 그룹이 같은 셀에 서로 다른 값을 내면 경고하고 기록한다
+    두 그룹이 같은 셀에 서로 다른 값을 내면 경고하고 기록한다
     (EC 기준 그룹화 + Judge 범위 제한으로 원칙상 발생하지 않는 안전장치).
 
     Returns:
         ({CR: {EC: importance}} — 전체 (Common + Specific) 통합, 충돌 기록 목록)
     """
-    # 원본 importance 수집
     full_importance: dict[str, dict[str, int]] = {}
     for block_key in ["common", "specific_professional", "specific_casual"]:
         block = hoq.get(block_key, {})
@@ -520,9 +506,7 @@ def save_results(
     return path
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# 전체 파이프라인
-# ═════════════════════════════════════════════════════════════════════════════
+# ── 전체 파이프라인 ────────────────────────────────────────────────────────────────
 
 def run() -> None:
     """Stage 2 전체 파이프라인"""
@@ -530,19 +514,14 @@ def run() -> None:
     print("  Stage 2: Agent-driven Conflict Resolution")
     print("=" * 60)
 
-    # Phase 1: hoq.json 로드
     hoq = load_hoq()
 
-    # Phase 2: N×N Conflict Matrix 구축
     conflict_cells, all_crs, nxn_matrix = build_conflict_matrix(hoq)
 
-    # Phase 3: CR Classification (EC 기준 그룹화)
     groups, independent_crs, grouping_meta = classify_crs(conflict_cells, hoq)
 
-    # Phase 4 + 5: Debate + Judge (그룹별)
     resolution_logs = resolve_conflicts(groups, hoq, nxn_matrix)
 
-    # Phase 6: Adjusted Importance Matrix 생성 + 저장
     adjusted_importance, merge_conflicts = build_adjusted_importance_matrix(
         hoq, resolution_logs
     )
@@ -554,7 +533,6 @@ def run() -> None:
         grouping=grouping_meta, merge_conflicts=merge_conflicts,
     )
 
-    # 요약
     print(f"\n{'='*60}")
     print("  Stage 2 완료 요약")
     print("=" * 60)
