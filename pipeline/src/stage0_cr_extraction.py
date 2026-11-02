@@ -118,73 +118,6 @@ _tagging_workflow.add_conditional_edges(
 tagging_app = _tagging_workflow.compile()
 
 
-def sample_raw_reviews(
-    raw_data: pd.DataFrame,
-    n: int | None = None,
-    seed: int | None = None,
-    output_path: str | None = None,
-    source_path: str | None = None,
-) -> pd.DataFrame:
-    """수집 원본에서 고정 시드 무작위 표본 추출 (매뉴얼 1-1-2)
-
-    - n행을 seed로 추출 (기본값: settings.RAW_SAMPLE_SIZE / RAW_SAMPLE_SEED)
-    - 추출 후 원본 행 순서(sort_index)로 정렬 — 같은 게시글의 댓글이 이어져 보이도록
-    - 원본 행 번호를 Source_Row 컬럼으로 보존
-    - output_path에 저장: 시트 1 = 표본, 시트 "meta" = seed·n·원본 경로·행 수·추출 시각
-    """
-    n = settings.RAW_SAMPLE_SIZE if n is None else n
-    seed = settings.RAW_SAMPLE_SEED if seed is None else seed
-    output_path = settings.RAW_SAMPLE_PATH if output_path is None else output_path
-    total = len(raw_data)
-    if n is None or n >= total:
-        sampled = raw_data.copy()
-        print(f"[Sample] 표본 추출 없음 — 전체 {total:,}행 사용")
-    else:
-        sampled = raw_data.sample(n=n, random_state=seed).sort_index()
-        print(f"[Sample] 무작위 표본 {n:,}/{total:,}행 (seed={seed})")
-    sampled = sampled.copy()
-    sampled.insert(0, "Source_Row", sampled.index)
-    sampled = sampled.reset_index(drop=True)
-    if "Post_ID" in sampled.columns:
-        print(f"[Sample] 고유 게시글 {sampled['Post_ID'].nunique():,}개")
-    if "Date" in sampled.columns:
-        print(f"[Sample] 기간 {str(sampled['Date'].min())[:10]} ~ {str(sampled['Date'].max())[:10]}")
-
-    from datetime import datetime
-    meta = pd.DataFrame([
-        {"key": "seed", "value": seed},
-        {"key": "n", "value": len(sampled)},
-        {"key": "source_rows", "value": total},
-        {"key": "source_path", "value": source_path or settings.RAW_DATA_PATH},
-        {"key": "sampled_at", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-    ])
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with pd.ExcelWriter(output_path) as w:
-        sampled.to_excel(w, sheet_name="Sheet1", index=False)
-        meta.to_excel(w, sheet_name="meta", index=False)
-    print(f"[Sample] 저장: {output_path}")
-    return sampled
-
-
-def load_or_sample_raw() -> pd.DataFrame:
-    """Stage 0 입력 확보: 표본 파일이 있으면 그대로 사용, 없으면 settings 기준으로 추출
-
-    표본 파일은 `python sample_raw_reviews.py <seed>` 로 미리 만들 수 있다.
-    """
-    path = settings.RAW_SAMPLE_PATH
-    if os.path.exists(path):
-        sampled = pd.read_excel(path, sheet_name=0)
-        try:
-            meta = pd.read_excel(path, sheet_name="meta")
-            meta_txt = ", ".join(f"{k}={v}" for k, v in zip(meta["key"], meta["value"]))
-        except Exception:
-            meta_txt = "meta 시트 없음"
-        print(f"[Sample] 표본 파일 사용: {path} ({len(sampled):,}행 · {meta_txt})")
-        return sampled
-    raw_data = pd.read_excel(settings.RAW_DATA_PATH)
-    return sample_raw_reviews(raw_data)
-
-
 def run_phase1(raw_data: pd.DataFrame) -> pd.DataFrame:
     """Phase 1: 병렬 태깅 실행, tagged DataFrame 반환"""
     print(f"\n[Phase 1] Tagging {len(raw_data)}개 리뷰...")
@@ -907,10 +840,10 @@ def run() -> None:
         print("  Purpose 분포:")
         print(tagged_df[tagged_df["Is_Valid"] == True]["Purpose"].value_counts())
     else:
-        raw_data = load_or_sample_raw()
+        raw_data = pd.read_excel(settings.RAW_DATA_PATH)
         tagged_df = run_phase1(raw_data)
         # 원본 추적 컬럼 병기 (results는 위치 인덱스 순으로 정렬되어 있음)
-        for col in ("Source_Row", "Post_ID", "Date"):
+        for col in ("Post_ID", "Date"):
             if col in raw_data.columns:
                 tagged_df[col] = raw_data[col].values
         tagged_df.to_excel(tagged_path, index=False)

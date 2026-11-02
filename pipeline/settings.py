@@ -18,10 +18,6 @@ CHROMA_COLLECTION = "laptop_cr"
 
 # ── Stage 0 ──────────────────────────────────────────────────────────────────
 REUSE_TAGGED_REVIEWS           = True  # tagged_reviews.xlsx가 있으면 Phase 1(태깅)을 건너뛰고 재사용
-# 입력 규모: None이면 수집 데이터 전체를 사용. 데이터 선별(기간 기준)은 수집 단계(collection/)에서 수행한다.
-RAW_SAMPLE_SIZE                = None    # 정수를 주면 고정 시드 무작위로 그 수만큼만 사용
-RAW_SAMPLE_SEED                = 333     # 재현용 시드
-RAW_SAMPLE_PATH                = "data/raw/reddit_reviews_sample.xlsx"  # 추출된 표본 저장 (원본 컬럼 + Source_Row)
 MAX_CRS_PER_SEGMENT            = 13    # 세그먼트당 CR 추출 상한 (추출 프롬프트에 전달; HoQ 행 수를 20개 안팎으로 유지)
 MIN_REVIEW_SUPPORT             = 2     # CR당 최소 evidence 리뷰 수
 MAX_REVIEWS_PER_CHUNK          = 200   # 컨텍스트 초과 시 청크 크기
