@@ -46,4 +46,4 @@ python render.py --only initial_hoq,conflict          # 일부만
 | `ec_pc` | `ec_pc_matrix_<model>.png` | 기술 특성-부품 특성 관계 행렬 |
 | `pc_roof` | `pc_roof_matrix_<model>.png` | 부품 특성 간 상관 |
 
-> `<종류>`는 요구사항 종류(공통 · 사용 목적)이고, `<model>`은 integrated_hoq.json의 모델 이름이다. 모델이 나뉘지 않았으면 한 장씩 생성된다.
+> `<종류>`는 요구사항 종류(공통 · 사용 목적별)이고, `<model>` 자리에는 integrated_hoq.json에 들어 있는 모델 이름이 그대로 붙으며, 모델이 여러 개면 모델마다 한 장씩 생성된다.

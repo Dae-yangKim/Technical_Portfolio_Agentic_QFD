@@ -37,25 +37,27 @@ collection/ ──▶ pipeline/ (Stage 0 → 1 → 2 → 3) ──▶ visualizat
 ```
 Technical_portfolio_agentic_qfd/
 ├── collection/
-│   ├── collect_reviews.py        # Reddit 댓글 수집
+│   ├── collect_reviews.py        # 댓글 수집
 │   └── README.md
 ├── pipeline/
 │   ├── main.py · settings.py · reset_db.py
 │   ├── src/                      # Stage 0~3, 프롬프트, LangGraph 토론 그래프, 스키마
-│   ├── data/                     # raw(입력) · intermediate · output (실행 시 생성)
+│   ├── data/                     # 데이터
 │   └── README.md
 ├── visualization/
 │   ├── render.py                 # 그림 생성
-│   ├── sample_input/             # 파이프라인 산출물 예시 json 4개 (clone 직후 실행용)
-│   ├── figures/                  # PNG 출력 (실행 시 생성)
+│   ├── sample_input/             # 파이프라인 산출물 예시 json 4개
+│   ├── figures/                  # PNG
 │   └── README.md
 ├── pyproject.toml · uv.lock      # 의존성 (uv)
 ├── requirements.txt              # 의존성 (pip, uv.lock에서 생성)
 ├── .python-version               # 3.12
-└── .env.example                  # API 키 양식
+└── .env.example                  # 환경 변수 양식
 ```
 
 ### 설치
+
+> (참고) 코드는 Python 3.12 환경에서 실행하였고, `requirements.txt`도 이 버전으로 구성되어 있다.
 
 **uv**
 
@@ -82,5 +84,3 @@ pip install -r requirements.txt
 | `OPENAI_API_KEY` | `pipeline/` | OpenAI |
 | `TAVILY_API_KEY`, `SERPAPI_API_KEY` | `pipeline/` | Tavily, SerpAPI |
 | 없음 | `visualization/` | — |
-
-각 폴더의 명령은 가상환경을 활성화한 상태(`source .venv/bin/activate`)에서 `python …`으로 실행한다. uv를 쓰면 활성화 없이 `uv run python …`으로 실행해도 된다.
